@@ -63,8 +63,8 @@ La definición de lectura es cada valor de `LECTURA;rasgunos;X` recibido, inclui
 - `ui/PantallaHistorial.kt`: últimas 50 lecturas, con fecha y valor.
 - `Sesion.kt`, `PantallaPanel.kt`: cargar rol, permitir/denegar comandos y guardar lecturas recibidas.
 - `enlace/Mensaje.kt`, `Enlace.kt`, `WifiEnlace.kt`, `seguridad/Cripto.kt`: latidos bidireccionales, sobre con secuencia, sal aleatoria por sesión y protección AES-GCM entre teléfonos.
-- Firmware: ambos sketches de Cama y Comedero se adaptan para lecturas 0–3, espera de decisión del Panel, ACK y estado seguro. MQTT/TLS/HMAC se conserva en el canal cama–comedero; TCP/5050 conecta Panel y gateway.
-- Documentación: actualizar `README.md`, añadir resultados P8–P14 y PL1–PL7 a `docs/PRUEBAS_SUMATIVA.md`, añadir evidencia en `docs/evidencia/` y actualizar instalación/demo.
+- Firmware: los sketches de Cama y Comedero están adaptados para lecturas 0–3, espera de decisión del Panel, ACK y estado seguro. Ambos compilan para ESP32 DevKit V1. MQTT/TLS/HMAC se conserva en el canal cama–comedero; TCP/5050 conecta Panel y gateway.
+- Documentación: el repositorio incluye `README.md`, análisis Wokwi, diseño/mockup, instrucciones de Firebase e instalación, matriz ISO/OT y las tablas P1–P14/PL1–PL7. Los campos de resultados y evidencia siguen vacíos hasta ejecutar pruebas conectadas y físicas.
 
 El archivo `app/google-services.json` seguirá siendo local e ignorado por Git. El repositorio incluirá instrucciones para configurarlo sin publicar credenciales o contraseñas.
 
@@ -146,7 +146,7 @@ Estas referencias sirven para explicar el diseño; no implican certificación ni
 - [x] Adaptar ambos sketches para lecturas 0–3, solicitud pendiente y ACK; el ESP32 Comedero expone gateway TCP/5050 para el Panel y MQTT entre placas se conserva.
 - [x] Implementar secuencia persistente por mensaje, verificación HMAC para MQTT, y validación de comandos del gateway; el canal App–ESP32 sin cifrar queda limitado a modo de laboratorio.
 - [x] Implementar cierre del servo y cancelación segura al perder Wi-Fi/Panel, al expirar el latido o durante reinicio/error del firmware.
-- [x] Compilar ambos sketches con Arduino CLI para ESP32 DevKit V1. El gateway compila con avisos deprecados/no críticos; no se ha cargado a la placa.
+- [x] Compilar ambos sketches con Arduino CLI para ESP32 DevKit V1. La compilación limpia reportó solo avisos no críticos en ESP32Servo; no se ha cargado a la placa.
 - [ ] Ejecutar PL1–PL7: lectura física, control/ACK, notificación, estado seguro, mensaje inválido, latencia menor a 2 s y regresión MQTT/HiveMQ.
 - [ ] Guardar video/capturas de resultados y anotar el hardware, versiones y latencia observada.
 
@@ -159,7 +159,7 @@ Estas referencias sirven para explicar el diseño; no implican certificación ni
 - [x] Verificar que los archivos locales `google-services.json`, `local.properties` y `secrets.h` estén ignorados por Git; revisar el contenido que se preparará para publicar.
 - [x] Compilar APK debug y ejecutar las pruebas unitarias locales. Instalarlo y demostrarlo en los dos teléfonos todavía está pendiente.
 - [ ] Ensayar el guion de 5–7 minutos: login, rol, conexión, rasguños, alerta, dispensación, ACK, historial y estado seguro.
-- [x] Dejar `entrega_aai.txt` con el enlace correcto para subir al AAI. El commit/push del repositorio se completa después de verificar los archivos que se publicarán.
+- [x] Hacer commit y push de la versión inicial revisada; dejar `entrega_aai.txt` con el enlace correcto para el AAI. Los resultados y evidencias se subirán en commits posteriores cuando se ejecuten las pruebas pendientes.
 - [ ] Presentar la demostración al docente y registrar la entrega solo cuando ocurra.
 
 **Criterio de salida:** documentación y build listos; la demostración en clase y el envío por AAI quedan sin marcar hasta realizarlos realmente.
@@ -207,14 +207,14 @@ En esta tabla, **Resultado real** y **Evidencia** se completan después de proba
 
 ## 8. Riesgos, decisiones y fuera de alcance
 
-- **Firmware y alcance de integración:** los dos sketches, diagramas y configuraciones Wokwi ya están disponibles; véase `docs/ANALISIS_WOKWI.md`. El proyecto solo contiene simulaciones Wokwi, no evidencia de ejecución en dos placas físicas. La cama publica únicamente la solicitud final y vuelve a cero con un bloqueo de 30 segundos; el comedero valida firma/contador y acciona el servo de inmediato. Aún no existe el puente TCP para el Panel. Para cumplir el flujo manual de este proyecto, debe definirse cómo pasa la lectura, cómo el Panel autoriza y cómo se confirma a la cama.
-- **Secretos recibidos en firmware:** los sketches incluyen credenciales de broker y una clave HMAC directamente en el código. No publicar la carpeta tal como está. Antes de cualquier push a un repositorio público, separar secretos en un archivo local ignorado, dejar una plantilla sin valores y rotar las credenciales que ya estuvieron expuestas en la copia local.
-- **Archivos generados de Wokwi:** `arduino-cli.exe` y `build/` contienen herramientas/binarios grandes que no forman parte del código fuente que debe publicarse. No se han ejecutado ni se ha verificado que los ELF correspondan a los `.ino` actuales.
+- **Firmware y alcance de integración:** los sketches adaptados compilan y el flujo de Panel a gateway está implementado; véase `docs/ANALISIS_WOKWI.md`. Aún no se han cargado a placas ni validado físicamente. Las pruebas PL1–PL7 y las latencias observadas siguen pendientes.
+- **Credenciales del firmware:** el código versionado usa un archivo local ignorado `secrets.h` y plantillas sin credenciales reales. Las credenciales que venían escritas en los archivos recibidos deben rotarse antes de usar las placas; no se incluyeron en Git.
+- **Archivos generados:** `.gitignore` excluye herramientas descargadas, `.verificacion/` y `build/`; los binarios de compilación no se subieron. La compilación actual se verificó con Arduino CLI y sus versiones se registran en `docs/ANALISIS_WOKWI.md`.
 - **Firestore:** requiere habilitar la base en el proyecto Firebase, elegir región una vez y publicar las reglas incluidas en el repositorio. El código no puede considerarse probado hasta ejecutar P8–P14 con el proyecto real.
 - **Credenciales de Firebase:** el archivo local `app/google-services.json` se excluye de Git. README explicará cómo configurar el proyecto sin subir secretos.
 - **Modo de placa:** el modo debug sin cifrado se limita a pruebas de aula; la app Android a Android conserva AES-GCM. No declarar seguridad de producción en el enlace sin cifrar.
 - **Entropía:** la sal aleatoria por sesión reduce reutilización de claves y ataques precalculados, pero no aumenta los seis dígitos del código. La vinculación sigue siendo una demostración y debe declararse como tal.
-- **Normas:** la matriz relacionará medidas implementadas con categorías de controles de ISO/IEC 27400 y principios de seguridad OT/IEC 62443; es una justificación académica, no certificación ni auditoría de conformidad.
+- **Normas:** `docs/SEGURIDAD_ISO_OT.md` relaciona las medidas implementadas con los temas ISO/IEC 27400 indicados por la guía, controles ISO/IEC 27002 complementarios y principios OT/IEC 62443; es una justificación académica, no certificación ni auditoría de conformidad.
 - **Demostración:** solo el estudiante puede realizar la demostración en clase y confirmar su entrega AAI.
 
 Fuera de alcance: MQTT/HiveMQ dentro de la app Android, Firebase Cloud Messaging, SQLite/Room, login social, publicación en Play Store, app iOS, múltiples comederos y funciones no solicitadas. MQTT/HiveMQ se conserva únicamente entre las placas de Unidad 1 si así está implementado en los sketches originales.
