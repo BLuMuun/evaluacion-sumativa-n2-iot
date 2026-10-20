@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "lecturas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "usuarioUid", "order": "ASCENDING" },
+        { "fieldPath": "momento", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

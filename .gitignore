@@ -1,0 +1,38 @@
+# Gradle / Android Studio
+.gradle/
+.gradle-user-home/
+.android-user-home/
+**/build/
+**/arduino-cli.exe
+local.properties
+.idea/
+*.iml
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Herramientas y registros locales de verificación
+.tools/
+.verificacion/
+
+# Secretos, credenciales y datos personales
+*.jks
+*.keystore
+key.properties
+keystore.properties
+google-services.json
+hs_err_pid*.log
+service-account*.json
+.env
+.env.*
+!.env.example
+secrets.properties
+**/secrets.h
+**/secrets.local.h
+datos_personales/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+*.log

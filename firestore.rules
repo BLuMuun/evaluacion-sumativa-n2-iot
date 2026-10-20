@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function esOperador() {
+      return autenticado()
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'operador';
+    }
+
+    function tienePerfil() {
+      return autenticado()
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    match /usuarios/{uid} {
+      allow read: if autenticado() && request.auth.uid == uid;
+
+      // Una cuenta puede crear su perfil solo como observador. La promoción
+      // a operador se realiza desde Firebase Console, fuera de la app cliente.
+      allow create: if autenticado()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['correo', 'rol', 'creadoEn'])
+        && request.resource.data.correo == request.auth.token.email
+        && request.resource.data.rol == 'observador'
+        && request.resource.data.creadoEn == request.time;
+
+      allow update, delete: if false;
+    }
+
+    match /lecturas/{lecturaId} {
+      // El historial representa el mismo comedero compartido por los usuarios del proyecto.
+      allow read: if tienePerfil();
+
+      allow create: if esOperador()
+        && request.resource.data.keys().hasOnly([
+          'usuarioUid', 'momento', 'clave', 'valor', 'origen', 'sesionId'
+        ])
+        && request.resource.data.usuarioUid == request.auth.uid
+        && request.resource.data.momento == request.time
+        && (
+          (request.resource.data.clave == 'rasgunos'
+            && request.resource.data.valor in ['0', '1', '2', '3'])
+          ||
+          (request.resource.data.clave == 'comedero'
+            && request.resource.data.valor in ['CERRADO', 'DISPENSANDO'])
+        )
+        && request.resource.data.origen is string
+        && request.resource.data.origen.size() <= 32
+        && request.resource.data.sesionId is string
+        && request.resource.data.sesionId.size() <= 64;
+
+      allow update, delete: if false;
+    }
+  }
+}

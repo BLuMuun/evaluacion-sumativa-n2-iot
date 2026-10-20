@@ -1,0 +1,4 @@
+# Librería para comunicación MQTT
+PubSubClient
+# Librería para controlar el servomotor
+ESP32Servo

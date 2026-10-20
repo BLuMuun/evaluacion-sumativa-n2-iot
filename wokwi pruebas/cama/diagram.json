@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "author": "EF1 - Comedero IoT - Cama",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 40,
+      "left": 40,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn",
+      "top": 80,
+      "left": 280,
+      "attrs": {
+        "color": "green",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led",
+      "top": 210,
+      "left": 290,
+      "attrs": {
+        "color": "blue"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r",
+      "top": 210,
+      "left": 210,
+      "attrs": {
+        "value": "220"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "btn:1.r",
+      "esp:D18",
+      "green",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "btn:2.r",
+      "esp:GND.1",
+      "black",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "esp:D2",
+      "r:1",
+      "blue",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "r:2",
+      "led:A",
+      "blue",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "led:C",
+      "esp:GND.1",
+      "black",
+      [
+        "h0"
+      ]
+    ]
+  ],
+  "serialMonitor": {
+    "display": "auto"
+  },
+  "dependencies": {}
+}

@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "author": "EF1 - Comedero IoT - Comedero",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 50,
+      "left": 40,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo",
+      "top": 80,
+      "left": 300,
+      "attrs": {
+        "horn": "single"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led",
+      "top": 230,
+      "left": 310,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r",
+      "top": 230,
+      "left": 230,
+      "attrs": {
+        "value": "220"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "servo:PWM",
+      "esp:D18",
+      "orange",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "servo:V+",
+      "esp:VIN",
+      "red",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "servo:GND",
+      "esp:GND.1",
+      "black",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "esp:D2",
+      "r:1",
+      "red",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "r:2",
+      "led:A",
+      "red",
+      [
+        "h0"
+      ]
+    ],
+    [
+      "led:C",
+      "esp:GND.1",
+      "black",
+      [
+        "h0"
+      ]
+    ]
+  ],
+  "serialMonitor": {
+    "display": "always"
+  },
+  "dependencies": {}
+}
