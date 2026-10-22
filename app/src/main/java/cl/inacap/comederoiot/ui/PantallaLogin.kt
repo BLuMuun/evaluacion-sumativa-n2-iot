@@ -36,8 +36,8 @@ fun PantallaLogin(
     onIniciarSesion: (String, String, (PerfilUsuario?, String?) -> Unit) -> Unit,
     onLoginCorrecto: (PerfilUsuario) -> Unit,
     onCrearCuenta: () -> Unit,
-    avisoInicial: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    avisoInicial: String? = null
 ) {
     var correo by rememberSaveable { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }

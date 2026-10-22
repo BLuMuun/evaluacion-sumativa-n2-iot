@@ -8,8 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -34,16 +32,12 @@ import cl.inacap.comederoiot.ui.PantallaRegistro
 import cl.inacap.comederoiot.seguridad.AutenticacionFirebase
 
 class MainActivity : ComponentActivity() {
-    private lateinit var pedirNotificaciones: ActivityResultLauncher<String>
     private lateinit var autenticacion: AutenticacionFirebase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         autenticacion = AutenticacionFirebase(this)
-        pedirNotificaciones = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            Sesion.actualizarPermisoNotificaciones(this)
-        }
         Notificaciones.crearCanal(this)
 
         setContent {
@@ -64,7 +58,12 @@ class MainActivity : ComponentActivity() {
                 }
                 perfil = usuario
                 errorInicial = null
-                Sesion.configurarUsuario(usuario, lecturas)
+                Sesion.configurarUsuario(
+                    usuario = usuario,
+                    lecturas = lecturas,
+                    obtenerTokenFirebase = autenticacion::tokenActual,
+                    resolverRolFirebase = autenticacion::rolDeToken
+                )
                 pantalla = "conexion"
             }
 
@@ -190,7 +189,26 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         ) Sesion.actualizarPermisoNotificaciones(this)
-        else pedirNotificaciones.launch(Manifest.permission.POST_NOTIFICATIONS)
+        else requestPermissions(
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            CODIGO_SOLICITUD_NOTIFICACIONES
+        )
+    }
+
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CODIGO_SOLICITUD_NOTIFICACIONES) {
+            Sesion.actualizarPermisoNotificaciones(this)
+        }
+    }
+
+    private companion object {
+        const val CODIGO_SOLICITUD_NOTIFICACIONES = 5101
     }
 }
 

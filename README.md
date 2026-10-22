@@ -2,7 +2,7 @@
 
 Aplicación Android y firmware ESP32 para monitorear rasguños de un gato y controlar un comedero IoT. La aplicación requiere Login; el Nodo Android simula el dispositivo y el Panel permite monitorear y dispensar. Para la demostración con hardware, el ESP32 del comedero funciona como gateway TCP del Panel y mantiene MQTT/TLS con el ESP32 de la cama.
 
-> **Estado honesto:** la app Android compila, sus pruebas unitarias pasan y ambos sketches ESP32 compilan para la placa ESP32 DevKit V1. Las pruebas conectadas con Firebase, dos teléfonos y las pruebas PL1–PL7 en placas físicas siguen pendientes hasta ejecutarse y guardar evidencia. Una compilación no equivale a una prueba física.
+> **Estado de verificación:** la app Android compila, pasan 12 pruebas unitarias y `lintDebug` termina con 0 errores (2 avisos informativos). En HONOR y Moto G35 se aprobaron P5, P6, P7 y P13; P4 fue repetida y confirmó el bloqueo seguro para un `OBSERVADOR`. P10 se probó en la dirección Panel→Nodo; queda pendiente repetirla en la dirección Nodo→Panel porque ADB perdió el acceso al Moto durante la captura. P2 y P3 constan aprobadas en el registro previo. P1, P8, P9, P11, P12, P14–P15 y las pruebas PL1–PL7 con placas siguen pendientes. Una compilación no equivale a una prueba física.
 
 ## Problemática
 
@@ -85,7 +85,7 @@ En el modo de laboratorio App–ESP32 se usa `nonce;secuencia;TIPO;CLAVE;VALOR`.
 - [Análisis de los proyectos Wokwi recibidos](docs/ANALISIS_WOKWI.md)
 - [Plan MVP por hitos](PLAN_MVP.md)
 - [Configuración de Firebase](docs/FIREBASE_SETUP.md)
-- [Pruebas P1–P14 y PL1–PL7](docs/PRUEBAS_SUMATIVA.md)
+- [Pruebas P1–P15 y PL1–PL7](docs/PRUEBAS_SUMATIVA.md)
 - [Instalación y ejecución](docs/INSTALACION.md)
 - [Diseño y mockup de las pantallas](docs/DISENO_SUMATIVA_PARA_REVISION.md)
 - [Análisis de los sketches y diagramas Wokwi](docs/ANALISIS_WOKWI.md)
@@ -96,21 +96,22 @@ Consulta [`docs/FIREBASE_SETUP.md`](docs/FIREBASE_SETUP.md). Copia el archivo de
 
 ## Seguridad y lineamientos ISO/OT
 
-La app usa AES-256-GCM y sal aleatoria por sesión en modo Android–Android, contador de secuencia anti-repetición, Firebase Authentication, reglas de rol en Firestore, validación estricta de protocolo, `allowBackup=false`, `usesCleartextTraffic=false`, permisos mínimos y estado seguro `CERRADO`. Los ESP32 conservan TLS/HMAC en MQTT y verifican secuencias persistentes.
+La app usa AES-256-GCM y sal aleatoria por sesión en modo Android–Android, contador de secuencia anti-repetición, Firebase Authentication, reglas de rol en Firestore, validación estricta de protocolo, `allowBackup=false`, `usesCleartextTraffic=false`, permisos mínimos y estado seguro `CERRADO`. Antes de conectar, el Panel entrega su token Firebase dentro del canal cifrado; el Nodo consulta solo el campo `rol` del perfil autenticado mediante Firestore REST y rechaza los comandos si el rol no es `operador` o no se pudo verificar. Así, el control de rol no depende solo de que el botón esté deshabilitado en la interfaz. Los ESP32 conservan TLS/HMAC en MQTT y verifican secuencias persistentes.
 
 La matriz de [`docs/SEGURIDAD_ISO_OT.md`](docs/SEGURIDAD_ISO_OT.md) enlaza cada medida con las áreas de control ISO/IEC 27400:2022 descritas en el Hito 7 de la guía, controles complementarios de ISO/IEC 27002:2022 y requisitos fundamentales IAC, UC, SI, DC, RDF, TRE y RA de IEC 62443-3-3. La guía no asigna números de cláusula a las medidas del proyecto y no se inventan. Son referencias de diseño, no certificación ni verificación formal de cumplimiento. La excepción de prueba App–ESP32 sin cifrar se documenta en esa matriz.
 
 ## Pruebas
 
-Los tests unitarios automáticos cubren lógica de ventana, validación de mensajes, AES-GCM y control de secuencias. Las pruebas de ejecución con Firebase, dos teléfonos y placas físicas tienen resultado **PENDIENTE** hasta que se ejecuten y se agregue evidencia en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md).
+Los 12 tests unitarios cubren lógica de ventana, validación de mensajes, AES-GCM, secuencias y autorización del rol en el Nodo. Android Lint no informa errores; conserva dos avisos por `targetSdk = 36` y la versión fijada de `core-ktx`. Los resultados por caso y las capturas completas de teléfono están en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md). La prueba positiva de dispensación con Operador y las pruebas físicas de placas aún están pendientes.
 
 ## Limitaciones conocidas
 
 - Se deben usar credenciales nuevas de HiveMQ y una clave HMAC aleatoria en los `secrets.h` locales; las credenciales recibidas anteriormente no deben reutilizarse.
-- La cuenta Firebase debe tener perfil Firestore y el rol operador asignado manualmente para habilitar el control.
+- La cuenta Firebase debe tener perfil Firestore y el rol operador asignado manualmente para habilitar el control. En esta verificación los dos teléfonos usaron cuentas `OBSERVADOR`; por eso se probó el bloqueo seguro y no la entrega positiva como Operador.
+- El Nodo necesita acceso a Internet para verificar en Firestore el token y rol del Panel al iniciar una sesión Android–Android; si la verificación falla, no acepta órdenes. Los observadores pueden monitorear una vez autenticada la sesión.
 - El gateway App–ESP32 es una modalidad de prueba sin cifrado ni autenticación criptográfica; no usar en Internet/redes públicas.
 - MQTT en `PubSubClient` usa QoS 0; el sketch repite el ACK hasta que la Cama confirma con lectura 0, pero la entrega MQTT no sustituye una prueba de reconexión real.
-- No hay prueba física ni resultado Firebase/Android marcado como aprobado hasta registrar ejecución y evidencia.
+- Los casos marcados como aprobados tienen ejecución y evidencia en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md); los casos restantes siguen pendientes y no se presentan como completados.
 
 ## Uso de IA
 

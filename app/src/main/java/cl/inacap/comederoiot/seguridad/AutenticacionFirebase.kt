@@ -6,10 +6,13 @@ import android.util.Patterns
 import cl.inacap.comederoiot.datos.PerfilUsuario
 import cl.inacap.comederoiot.datos.RepositorioLecturas
 import cl.inacap.comederoiot.datos.RepositorioUsuarios
+import cl.inacap.comederoiot.datos.RolUsuario
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Registro e inicio de sesión con Firebase Authentication y perfil Firestore. */
 class AutenticacionFirebase(contexto: Context) {
@@ -17,6 +20,7 @@ class AutenticacionFirebase(contexto: Context) {
     private val auth = app?.let(FirebaseAuth::getInstance)
     private val firestore = app?.let(FirebaseFirestore::getInstance)
     private val usuarios = firestore?.let(::RepositorioUsuarios)
+    private val autorizadorComandos = app?.options?.projectId?.let(::AutorizadorComandosFirebase)
     private var intentosIncorrectos = 0
     private var bloqueadoHastaMs = 0L
 
@@ -27,6 +31,24 @@ class AutenticacionFirebase(contexto: Context) {
         get() = auth?.currentUser != null
 
     fun nuevoRepositorioLecturas(): RepositorioLecturas? = firestore?.let(::RepositorioLecturas)
+
+    /** Token temporal del usuario autenticado; no se guarda ni se registra en archivos. */
+    suspend fun tokenActual(): String? {
+        val usuario = auth?.currentUser ?: return null
+        return suspendCancellableCoroutine { continuation ->
+            usuario.getIdToken(false)
+                .addOnSuccessListener { resultado ->
+                    if (continuation.isActive) continuation.resume(resultado.token)
+                }
+                .addOnFailureListener {
+                    if (continuation.isActive) continuation.resume(null)
+                }
+        }
+    }
+
+    /** El Nodo verifica este token contra Firestore y sus reglas de acceso por usuario. */
+    suspend fun rolDeToken(token: String): RolUsuario? =
+        autorizadorComandos?.resolverRol(token)
 
     fun iniciarSesion(correo: String, contrasena: String, alTerminar: (PerfilUsuario?, String?) -> Unit) {
         val instancia = auth

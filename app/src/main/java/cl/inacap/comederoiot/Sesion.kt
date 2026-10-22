@@ -1,5 +1,6 @@
 package cl.inacap.comederoiot
 
+import android.app.Application
 import android.content.Context
 import android.os.SystemClock
 import cl.inacap.comederoiot.datos.PerfilUsuario
@@ -23,7 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 enum class RolApp { NODO, PANEL }
 
@@ -49,12 +49,15 @@ object Sesion {
     private const val TIEMPO_SIN_LATIDO_MS = 6_000L
     private val alcance = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _estado = MutableStateFlow(EstadoSesion())
-    private var contexto: Context? = null
+    // Se asigna exclusivamente contexto.applicationContext en preparar().
+    private var contexto: Application? = null
     private var enlace: Enlace? = null
     private var rol: RolApp? = null
     private var modoConexion = ModoConexion.ANDROID_CIFRADO
     private var perfil: PerfilUsuario? = null
     private var repositorioLecturas: RepositorioLecturas? = null
+    private var obtenerTokenFirebase: (suspend () -> String?)? = null
+    private var resolverRolFirebase: (suspend (String) -> RolUsuario?)? = null
     private var sesionId = UUID.randomUUID().toString()
     private var ventana = VentanaRasgunos(VENTANA_MS)
     private var trabajoVentana: Job? = null
@@ -70,9 +73,16 @@ object Sesion {
 
     val estado = _estado.asStateFlow()
 
-    fun configurarUsuario(usuario: PerfilUsuario, lecturas: RepositorioLecturas) {
+    fun configurarUsuario(
+        usuario: PerfilUsuario,
+        lecturas: RepositorioLecturas,
+        obtenerTokenFirebase: suspend () -> String?,
+        resolverRolFirebase: suspend (String) -> RolUsuario?
+    ) {
         perfil = usuario
         repositorioLecturas = lecturas
+        this.obtenerTokenFirebase = obtenerTokenFirebase
+        this.resolverRolFirebase = resolverRolFirebase
         _estado.value = _estado.value.copy(rolUsuario = usuario.rol)
     }
 
@@ -80,6 +90,8 @@ object Sesion {
         desconectar()
         perfil = null
         repositorioLecturas = null
+        obtenerTokenFirebase = null
+        resolverRolFirebase = null
         _estado.value = EstadoSesion(notificacionesHabilitadas = _estado.value.notificacionesHabilitadas)
     }
 
@@ -99,7 +111,11 @@ object Sesion {
         alcance.launch {
             try {
                 if (generacion != generacionSesion) return@launch
-                val nuevoEnlace = WifiEnlace(codigo, ModoConexion.ANDROID_CIFRADO)
+                val nuevoEnlace = WifiEnlace(
+                    codigo,
+                    ModoConexion.ANDROID_CIFRADO,
+                    resolverRolPanel = { token -> resolverRolFirebase?.invoke(token) }
+                )
                 enlace = nuevoEnlace
                 monitorWifi = MonitorWifi(contexto) { notificarPerdidaDeRed() }.also { it.iniciar() }
                 observarEnlace(nuevoEnlace, RolApp.NODO)
@@ -134,7 +150,12 @@ object Sesion {
             try {
                 if (generacion != generacionSesion) return@launch
                 val codigoSesion = codigo.takeIf { modo == ModoConexion.ANDROID_CIFRADO }
-                val nuevoEnlace = WifiEnlace(codigoSesion, modo)
+                val nuevoEnlace = WifiEnlace(
+                    codigoSesion,
+                    modo,
+                    obtenerTokenPanel = { obtenerTokenFirebase?.invoke() },
+                    rolPanelEsperado = perfil?.rol
+                )
                 enlace = nuevoEnlace
                 monitorWifi = MonitorWifi(contexto) { notificarPerdidaDeRed() }.also { it.iniciar() }
                 observarEnlace(nuevoEnlace, RolApp.PANEL)
@@ -160,7 +181,7 @@ object Sesion {
     ): Int {
         detenerEnlace()
         generacionSesion += 1
-        contexto = contextoNuevo.applicationContext
+        contexto = contextoNuevo.applicationContext as Application
         rol = nuevoRol
         modoConexion = modo
         sesionId = UUID.randomUUID().toString()
@@ -322,6 +343,9 @@ object Sesion {
 
     private fun procesarComando(mensaje: Mensaje) {
         if (modoConexion != ModoConexion.ANDROID_CIFRADO || !mensaje.permitidoParaNodo()) return
+        if (_estado.value.enlace != EstadoEnlace.CONECTADO ||
+            enlace?.rolPanelAutorizado?.value != RolUsuario.OPERADOR
+        ) return
         if (!ventana.solicitudPendiente || _estado.value.comedero != "CERRADO" ||
             trabajoEntrega?.isActive == true
         ) return

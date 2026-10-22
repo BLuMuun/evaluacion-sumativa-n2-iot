@@ -1,5 +1,6 @@
 package cl.inacap.comederoiot.enlace
 
+import cl.inacap.comederoiot.datos.RolUsuario
 import cl.inacap.comederoiot.seguridad.Cripto
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -29,11 +30,16 @@ enum class ModoConexion { ANDROID_CIFRADO, ESP32_PRUEBA }
 /** Servidor TCP para Nodo Android y cliente para Panel Android o gateway ESP32. */
 class WifiEnlace(
     private val codigoVinculacion: String?,
-    private val modo: ModoConexion
+    private val modo: ModoConexion,
+    private val obtenerTokenPanel: suspend () -> String? = { null },
+    private val resolverRolPanel: suspend (String) -> RolUsuario? = { null },
+    private val rolPanelEsperado: RolUsuario? = null,
+    private val puerto: Int = PUERTO
 ) : Enlace {
     private val alcance = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _estado = MutableStateFlow(EstadoEnlace.DESCONECTADO)
     private val _entrantes = MutableSharedFlow<Mensaje>(extraBufferCapacity = 32)
+    private val _rolPanelAutorizado = MutableStateFlow<RolUsuario?>(null)
     private val cerrojoEnvio = Mutex()
 
     @Volatile private var servidor: ServerSocket? = null
@@ -47,6 +53,8 @@ class WifiEnlace(
 
     override val estado = _estado.asStateFlow()
     override val entrantes = _entrantes.asSharedFlow()
+    override val rolPanelAutorizado = _rolPanelAutorizado.asStateFlow()
+    val puertoEscucha: Int get() = servidor?.localPort ?: puerto
 
     override fun iniciarNodo() {
         if (modo != ModoConexion.ANDROID_CIFRADO || _estado.value != EstadoEnlace.DESCONECTADO || cerrado) return
@@ -59,7 +67,7 @@ class WifiEnlace(
 
         alcance.launch {
             try {
-                val server = ServerSocket(PUERTO)
+                val server = ServerSocket(puerto)
                 servidor = server
                 while (isActive && !cerrado) {
                     _estado.value = EstadoEnlace.ESPERANDO
@@ -96,7 +104,7 @@ class WifiEnlace(
             try {
                 cliente.tcpNoDelay = true
                 cliente.keepAlive = true
-                cliente.connect(InetSocketAddress(ipNodo, PUERTO), TIEMPO_ESPERA_MS)
+                cliente.connect(InetSocketAddress(ipNodo, puerto), TIEMPO_ESPERA_MS)
                 if (cerrado) {
                     cliente.close()
                     return@launch
@@ -112,14 +120,19 @@ class WifiEnlace(
     }
 
     private suspend fun atender(cliente: Socket, paraNodo: Boolean) {
+        var sesionEstablecida = false
         socket = cliente
         cliente.tcpNoDelay = true
         cliente.keepAlive = true
+        cliente.soTimeout = TIEMPO_AUTORIZACION_MS
+        _rolPanelAutorizado.value = null
         try {
             val entrada = cliente.getInputStream()
             prepararSesion(entrada, cliente, paraNodo)
             secuenciaSalida = 0
             secuenciaEntrante.reiniciar()
+            cliente.soTimeout = 0
+            sesionEstablecida = true
             _estado.value = EstadoEnlace.CONECTADO
 
             while (alcance.isActive && !cerrado && !cliente.isClosed) {
@@ -128,23 +141,28 @@ class WifiEnlace(
                 if (!secuenciaEntrante.aceptar(trama.secuencia)) continue
                 val mensaje = Mensaje.desdeLinea(trama.contenido) ?: continue
                 val direccionValida = if (paraNodo) mensaje.permitidoParaNodo() else mensaje.permitidoParaPanel()
-                if (direccionValida) {
-                    _entrantes.emit(mensaje)
-                }
+                val remitenteAutorizado = !paraNodo || mensaje.tipo != "CMD" ||
+                    _rolPanelAutorizado.value == RolUsuario.OPERADOR
+                if (direccionValida && remitenteAutorizado) _entrantes.emit(mensaje)
             }
         } catch (_: CancellationException) {
             throw CancellationException()
         } catch (_: IOException) {
-            // EOF o fallo de red. El controlador aplica el estado seguro al observar el cierre.
+            // EOF, timeout o fallo de red: la capa de sesión aplica el estado seguro.
         } catch (_: Exception) {
-            // Una negociación o trama inválida no debe cerrar la aplicación.
+            // Una negociación o trama inválida se rechaza sin propagar el error a la app.
         } finally {
             runCatching { cliente.close() }
             if (socket === cliente) socket = null
             claveSesion = null
             nonceHardware = null
+            _rolPanelAutorizado.value = null
             if (!cerrado) {
-                _estado.value = if (modoNodo) EstadoEnlace.ESPERANDO else EstadoEnlace.DESCONECTADO
+                _estado.value = when {
+                    modoNodo -> EstadoEnlace.ESPERANDO
+                    sesionEstablecida -> EstadoEnlace.DESCONECTADO
+                    else -> EstadoEnlace.ERROR
+                }
             }
         }
     }
@@ -162,7 +180,10 @@ class WifiEnlace(
                 if (campos.size != 2 || campos[0] != "HELLO") throw IOException("Saludo inválido.")
                 Cripto.decodificarSal(campos[1]) ?: throw IOException("Sal inválida.")
             }
-            claveSesion = Cripto.claveDesdeCodigo(codigo, sal)
+            val clave = Cripto.claveDesdeCodigo(codigo, sal)
+            claveSesion = clave
+            if (paraNodo) autenticarPanel(entrada, cliente, clave)
+            else autenticarContraNodo(entrada, cliente, clave)
         } else {
             if (paraNodo) throw IOException("El modo ESP32 solo funciona como cliente Panel.")
             val saludo = leerLineaLimitada(entrada) ?: throw IOException("No se recibió el saludo del gateway.")
@@ -172,6 +193,39 @@ class WifiEnlace(
             }
             nonceHardware = campos[1]
         }
+    }
+
+    /** El ID token viaja dentro de AES-GCM y Firestore aplica sus reglas al leer el perfil propio. */
+    private suspend fun autenticarPanel(entrada: java.io.InputStream, cliente: Socket, clave: SecretKey) {
+        val linea = leerLineaLimitada(entrada, MAX_LINEA_AUTORIZACION)
+            ?: throw IOException("El Panel no envió su identidad Firebase.")
+        val campos = linea.split(';', limit = 3)
+        if (campos.size != 2 || campos[0] != "AUTH") throw IOException("Identidad del Panel inválida.")
+        val token = Cripto.descifrar(campos[1], clave, MAX_CIFRADO_TOKEN)
+            ?.takeIf { it.length <= MAX_LONGITUD_TOKEN && it.none(Char::isISOControl) }
+            ?: throw IOException("El token Firebase no se pudo validar.")
+        val rolVerificado = resolverRolPanel(token)
+            ?: throw IOException("Firebase no pudo confirmar la identidad y el rol del Panel.")
+        _rolPanelAutorizado.value = rolVerificado
+        escribirLinea(cliente, "AUTH;${Cripto.cifrar(rolVerificado.documento, clave)}")
+    }
+
+    private suspend fun autenticarContraNodo(entrada: java.io.InputStream, cliente: Socket, clave: SecretKey) {
+        val token = obtenerTokenPanel()?.takeIf { it.length <= MAX_LONGITUD_TOKEN }
+            ?: throw IOException("No se pudo obtener el token de la sesión Firebase.")
+        escribirLinea(cliente, "AUTH;${Cripto.cifrar(token, clave)}")
+        val respuesta = leerLineaLimitada(entrada)
+            ?: throw IOException("El Nodo no confirmó el rol del Panel.")
+        val campos = respuesta.split(';', limit = 3)
+        if (campos.size != 2 || campos[0] != "AUTH") throw IOException("Respuesta de autorización inválida.")
+        val rolTexto = Cripto.descifrar(campos[1], clave)
+            ?: throw IOException("No se pudo descifrar la autorización del Nodo.")
+        val rolVerificado = RolUsuario.desdeDocumento(rolTexto)
+            ?: throw IOException("El Nodo devolvió un rol desconocido.")
+        if (rolPanelEsperado != null && rolVerificado != rolPanelEsperado) {
+            throw IOException("El rol Firebase del Panel cambió; inicia sesión nuevamente.")
+        }
+        _rolPanelAutorizado.value = rolVerificado
     }
 
     override suspend fun enviar(mensaje: Mensaje): Boolean = cerrojoEnvio.withLock {
@@ -245,6 +299,7 @@ class WifiEnlace(
         runCatching { servidor?.close() }
         socket = null
         servidor = null
+        _rolPanelAutorizado.value = null
         alcance.cancel()
         _estado.value = EstadoEnlace.DESCONECTADO
     }
@@ -254,7 +309,11 @@ class WifiEnlace(
     companion object {
         const val PUERTO = 5050
         private const val TIEMPO_ESPERA_MS = 5_000
+        private const val TIEMPO_AUTORIZACION_MS = 15_000
         private const val MAX_LINEA = 256
+        private const val MAX_LINEA_AUTORIZACION = 4_096
+        private const val MAX_CIFRADO_TOKEN = 4_096
+        private const val MAX_LONGITUD_TOKEN = 3_072
 
         /** Recibe únicamente una IP local IPv4; devuelve null si el teléfono no está en Wi-Fi. */
         fun ipLocal(): String? = try {
@@ -271,8 +330,11 @@ class WifiEnlace(
             null
         }
 
-        /** Lee una línea con límite de tamaño para no reservar memoria por una trama enorme. */
-        private fun leerLineaLimitada(entrada: java.io.InputStream): String? {
+        /** Lee una línea con límite para no reservar memoria ante una trama demasiado grande. */
+        private fun leerLineaLimitada(
+            entrada: java.io.InputStream,
+            maximo: Int = MAX_LINEA
+        ): String? {
             val bytes = ByteArrayOutputStream()
             var excedida = false
             while (true) {
@@ -285,7 +347,7 @@ class WifiEnlace(
                     return String(trama, 0, largo, Charsets.UTF_8)
                 }
                 if (!excedida) {
-                    if (bytes.size() >= MAX_LINEA) excedida = true else bytes.write(siguiente)
+                    if (bytes.size() >= maximo) excedida = true else bytes.write(siguiente)
                 }
             }
         }

@@ -17,17 +17,15 @@ object Notificaciones {
     private val siguienteId = AtomicInteger(1)
 
     fun crearCanal(contexto: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val canal = NotificationChannel(
-                CANAL,
-                "Alertas del comedero",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Avisos de solicitudes y comandos del comedero IoT"
-            }
-            contexto.getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(canal)
+        val canal = NotificationChannel(
+            CANAL,
+            "Alertas del comedero",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Avisos de solicitudes y comandos del comedero IoT"
         }
+        contexto.getSystemService(NotificationManager::class.java)
+            .createNotificationChannel(canal)
     }
 
     fun permisoHabilitado(contexto: Context): Boolean {
@@ -36,11 +34,21 @@ object Notificaciones {
                 contexto,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
-        return concedido && NotificationManagerCompat.from(contexto).areNotificationsEnabled()
+        if (!concedido) return false
+        return try {
+            NotificationManagerCompat.from(contexto).areNotificationsEnabled()
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     fun mostrar(contexto: Context, titulo: String, texto: String) {
-        if (!permisoHabilitado(contexto)) return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                contexto,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
 
         val notificacion = NotificationCompat.Builder(contexto, CANAL)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -50,7 +58,13 @@ object Notificaciones {
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(contexto)
-            .notify(siguienteId.getAndIncrement(), notificacion)
+        try {
+            val gestor = NotificationManagerCompat.from(contexto)
+            if (gestor.areNotificationsEnabled()) {
+                gestor.notify(siguienteId.getAndIncrement(), notificacion)
+            }
+        } catch (_: SecurityException) {
+            // Si el permiso cambia justo antes de publicar, se descarta el aviso sin cerrar la app.
+        }
     }
 }

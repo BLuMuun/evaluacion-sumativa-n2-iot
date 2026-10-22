@@ -19,6 +19,8 @@ Las cuentas creadas desde la app reciben inicialmente el rol `observador`. El pr
 2. En **Firestore Database → Data → usuarios → {UID}**, cambia `rol` de `observador` a `operador`.
 3. Cierra y vuelve a iniciar sesión en la app para cargar el rol actualizado.
 
+Al iniciar una sesión Android–Android, el Panel envía su token de Firebase dentro del canal AES-GCM. El Nodo usa ese token para leer únicamente el campo `rol` del perfil `usuarios/{UID}` mediante la API REST de Firestore. Firebase aplica la regla de lectura del perfil propio; el Nodo solo permite `CMD` cuando esa consulta devuelve `operador`. Un usuario observador sigue conectado y puede monitorear, pero sus órdenes se descartan incluso si elude la interfaz.
+
 No agregues el campo de rol al formulario de registro. Las reglas bloquean la autoasignación desde la app cliente; los cambios de administración se realizan en Firebase Console.
 
 ## 3. Crear Firestore y publicar las reglas
@@ -41,6 +43,8 @@ El historial muestra las últimas 50 lecturas. El Panel guarda los mensajes `LEC
 - Registra una cuenta nueva y confirma que su rol sea `observador`.
 - Asigna `operador` desde Firebase Console a una cuenta autorizada.
 - Inicia sesión con cada rol y verifica que solo Operador pueda dispensar.
+- Con el Panel como Observador, confirma que los datos siguen llegando y que una orden enviada fuera del botón se descarta en el Nodo.
+- Con el Panel como Operador, confirma que el Nodo verifica el rol antes de aceptar una orden. El dispositivo Nodo requiere Internet para consultar Firestore durante la autenticación de sesión; si no puede verificar el perfil, falla de forma cerrada.
 - Conecta un Nodo y confirma que aparezcan documentos en `lecturas` y en la pantalla Historial.
 - Prueba las reglas desde Firebase Console o el emulador antes de una demostración.
 

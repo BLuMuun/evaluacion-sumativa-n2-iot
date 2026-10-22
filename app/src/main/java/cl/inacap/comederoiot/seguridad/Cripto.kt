@@ -17,6 +17,7 @@ object Cripto {
     private const val BYTES_IV = 12
     private const val BITS_ETIQUETA = 128
     private const val MAX_TAMANO_CIFRADO = 256
+    private const val MAX_TAMANO_TOKEN_CIFRADO = 4_096
     private val aleatorio = SecureRandom()
 
     fun codigoValido(codigo: String): Boolean =
@@ -69,8 +70,12 @@ object Cripto {
     }
 
     /** Devuelve null ante Base64 inválido, clave distinta, truncamiento o datos alterados. */
-    fun descifrar(linea: String, clave: SecretKey): String? {
-        if (linea.isEmpty() || linea.length > MAX_TAMANO_CIFRADO) return null
+    fun descifrar(
+        linea: String,
+        clave: SecretKey,
+        maxLongitud: Int = MAX_TAMANO_CIFRADO
+    ): String? {
+        if (linea.isEmpty() || linea.length > maxLongitud.coerceAtMost(MAX_TAMANO_TOKEN_CIFRADO)) return null
         return try {
             val paquete = Base64.getDecoder().decode(linea)
             if (paquete.size < BYTES_IV + BITS_ETIQUETA / 8) return null
