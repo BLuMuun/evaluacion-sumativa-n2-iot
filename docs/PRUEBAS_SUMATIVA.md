@@ -1,15 +1,15 @@
 # Pruebas de la Evaluación Sumativa
 
-Los resultados de la Formativa no sustituyen las pruebas sobre este build Sumativo, que incorpora Login, Firestore, secuencias, sal de sesión y el modo gateway. Todo queda **PENDIENTE** hasta ejecutar la prueba y registrar evidencia real.
+Los resultados de la Formativa no sustituyen las pruebas sobre este build Sumativo, que incorpora Login, Firestore, secuencias, sal de sesión y el modo gateway. Registra cada caso solo después de ejecutarlo y conservar evidencia real.
 
 ## Aplicación Android
 
 | ID | Caso | Resultado esperado | Resultado real | Evidencia |
 |---|---|---|---|---|
 | P1 | Login con una cuenta válida de Firebase | Abre Conexión y muestra el rol cargado desde Firestore | PENDIENTE | Pendiente |
-| P2 | Login con contraseña incorrecta | Muestra un error claro; no cierra la app | PENDIENTE | Pendiente |
-| P3 | Crear una cuenta nueva | Firebase Authentication crea la cuenta y Firestore crea el perfil `observador` | PENDIENTE | Pendiente |
-| P4 | Intentar dispensar como Observador | El botón permanece deshabilitado y no sale un `CMD` | PENDIENTE | Pendiente |
+| P2 | Login con contraseña incorrecta | Muestra un error claro; no cierra la app | **APROBADA** — Se hizo un intento con correo ficticio y contraseña temporal; la app mostró “Correo o contraseña incorrectos” y permaneció abierta en el Login. | [`evidencia-sumativa/P2-login-incorrecto-HONOR.png`](evidencia-sumativa/P2-login-incorrecto-HONOR.png) |
+| P3 | Crear una cuenta nueva | Firebase Authentication crea la cuenta y Firestore crea el perfil `observador` | **APROBADA** — Se registró una cuenta de prueba nueva y la aplicación cargó su perfil `OBSERVADOR` en Conexión. | [`evidencia-sumativa/P3-Cuenta-Firebase-HONOR.png`](evidencia-sumativa/P3-Cuenta-Firebase-HONOR.png) |
+| P4 | Intentar dispensar como Observador | El botón permanece deshabilitado y no sale un `CMD` | **FALLIDA** — El Moto G35 mostraba `OBSERVADOR` y el control estaba deshabilitado. Sin pulsarlo, durante la generación de 3 rasguños el HONOR llegó a `DISPENSANDO` y el Panel mostró “Última entrega: confirmada”. Esto no cumple el resultado esperado y requiere investigar el origen del comando antes de cambiar el perfil. | [`evidencia-sumativa/P4-FALLIDA-Nodo-Dispensando-HONOR.png`](evidencia-sumativa/P4-FALLIDA-Nodo-Dispensando-HONOR.png), [`evidencia-sumativa/P4-FALLIDA-Panel-Entrega-confirmada-MotoG35.png`](evidencia-sumativa/P4-FALLIDA-Panel-Entrega-confirmada-MotoG35.png) |
 | P5 | Conectar Nodo Android y Panel Android con mismo código | Ambos muestran conectado; el Panel ve rasguños y estado | PENDIENTE | Pendiente |
 | P6 | Registrar 1 y 2 rasguños dentro de 5 s | Panel muestra las lecturas en menos de 2 s | PENDIENTE | Pendiente |
 | P7 | Completar el tercer rasguño | Panel muestra 3/3 y emite una sola notificación de solicitud | PENDIENTE | Pendiente |
@@ -39,4 +39,5 @@ Completar esta ficha por sesión de pruebas y conservar capturas completas, sin 
 
 | Fecha | Build / commit | Teléfonos y versión Android | Placas y firmware | Red usada | Responsable | Observaciones |
 |---|---|---|---|---|---|---|
-| Pendiente | Pendiente | Pendiente | Pendiente | Pendiente | Pendiente | Pendiente |
+| 2026-10-22 | `5c1b6ed` (APK debug de Sumativa, actualizado en ambos teléfonos) | HONOR RBN-NX3 · Android 14; Moto G35 · Android 15 | No usadas en esta sesión | Wi-Fi local compartida | Estudiante + apoyo Codex | P2 aprobada con credenciales ficticias; ambos teléfonos respondieron ping entre sí sin pérdida. Login válido y pruebas restantes pendientes. |
+| 2026-10-22 | `5c1b6ed` (APK debug de Sumativa instalado en HONOR y Moto G35) | HONOR RBN-NX3 · Android 14; Moto G35 · Android 15 | No usadas en esta sesión | Wi-Fi local compartida | Estudiante + apoyo Codex | P3 aprobada: alta Firebase y rol `OBSERVADOR` visible. P4 fallida: el Nodo inició dispensación y el Panel confirmó entrega sin pulsar el control; el perfil no se modificó. |
