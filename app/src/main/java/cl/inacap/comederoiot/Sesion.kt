@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.os.SystemClock
 import cl.inacap.comederoiot.datos.PerfilUsuario
+import cl.inacap.comederoiot.datos.FiltroLecturasRepetidas
 import cl.inacap.comederoiot.datos.RepositorioLecturas
 import cl.inacap.comederoiot.datos.RolUsuario
 import cl.inacap.comederoiot.enlace.Enlace
@@ -56,6 +57,7 @@ object Sesion {
     private var modoConexion = ModoConexion.ANDROID_CIFRADO
     private var perfil: PerfilUsuario? = null
     private var repositorioLecturas: RepositorioLecturas? = null
+    private val filtroLecturas = FiltroLecturasRepetidas()
     private var obtenerTokenFirebase: (suspend () -> String?)? = null
     private var resolverRolFirebase: (suspend (String) -> RolUsuario?)? = null
     private var sesionId = UUID.randomUUID().toString()
@@ -185,6 +187,7 @@ object Sesion {
         rol = nuevoRol
         modoConexion = modo
         sesionId = UUID.randomUUID().toString()
+        filtroLecturas.reiniciar()
         ventana = VentanaRasgunos(VENTANA_MS)
         _estado.value = EstadoSesion(
             rol = nuevoRol,
@@ -379,13 +382,14 @@ object Sesion {
         if (mensaje.tipo == "LECTURA") {
             val usuario = perfil
             // El observador puede mirar en vivo, pero solo el operador guarda lecturas.
-            if (usuario?.rol == RolUsuario.OPERADOR) {
+            if (usuario?.rol == RolUsuario.OPERADOR && filtroLecturas.debeGuardar(mensaje)) {
                 repositorioLecturas?.guardar(
                     uid = usuario.uid,
                     sesionId = sesionId,
                     origen = if (modoConexion == ModoConexion.ESP32_PRUEBA) "ESP32_COMEDERO" else "ANDROID_NODO",
                     mensaje = mensaje
                 ) { error ->
+                    filtroLecturas.permitirReintento(mensaje)
                     _estado.value = _estado.value.copy(error = "No se pudo guardar la lectura: ${error.message ?: "revisa Firestore"}.")
                 }
             }

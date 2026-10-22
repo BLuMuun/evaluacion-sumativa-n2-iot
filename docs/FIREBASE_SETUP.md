@@ -36,7 +36,7 @@ Las reglas permiten a cuentas autenticadas con un perfil leer el historial compa
 - `usuarios/{uid}`: `correo`, `rol`, `creadoEn`.
 - `lecturas/{id}`: `usuarioUid`, `momento` (timestamp del servidor), `clave`, `valor`, `origen`, `sesionId`.
 
-El historial muestra las últimas 50 lecturas. El Panel guarda los mensajes `LECTURA` válidos que recibe cuando el usuario activo es operador. Un observador conserva monitoreo en vivo y puede consultar lecturas ya guardadas.
+El historial muestra las últimas 50 lecturas. El Panel operador guarda el primer valor y los cambios posteriores de cada clave `LECTURA`; si un latido repite el valor actual, no crea otro documento. El filtro se reinicia al iniciar una conexión nueva. Así, una sesión conectada sin cambios no desplaza del límite las lecturas útiles. Un observador conserva monitoreo en vivo y puede consultar lecturas ya guardadas.
 
 ## 5. Verificación
 

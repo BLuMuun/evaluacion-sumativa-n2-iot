@@ -2,7 +2,7 @@
 
 Aplicación Android y firmware ESP32 para monitorear rasguños de un gato y controlar un comedero IoT. La aplicación requiere Login; el Nodo Android simula el dispositivo y el Panel permite monitorear y dispensar. Para la demostración con hardware, el ESP32 del comedero funciona como gateway TCP del Panel y mantiene MQTT/TLS con el ESP32 de la cama.
 
-> **Estado de verificación:** la app compila y pasan 12 pruebas unitarias. Android Lint termina sin errores y reporta avisos de actualización de SDK/dependencias. P2 y P3 constan aprobadas en el registro anterior; en HONOR y Moto G35 están aprobadas P5, P6, P7, P10 y P11. P4 confirma el bloqueo seguro para un `OBSERVADOR`, y P13 verifica que la app sigue funcionando con notificaciones denegadas. P9 es parcial: la consulta a Firestore funciona, pero no hay lecturas guardadas porque las cuentas de prueba son `OBSERVADOR` y las reglas reservan la escritura a `operador`. P12 y parte de P15 tienen cobertura automatizada; sus pruebas físicas de repetición y envío directo siguen pendientes. P1, P8, P14–P15 y las pruebas PL1–PL7 con placas siguen pendientes. Una compilación no equivale a una prueba física.
+> **Estado de verificación:** el build Android más reciente compila, pasan 16 pruebas unitarias y Android Lint termina sin errores. P1, P2, P3, P5, P6, P7, P8, P9, P10, P11 y P13 están aprobadas en los teléfonos, con sus alcances y evidencias en la matriz. P4 confirma el bloqueo seguro para un `OBSERVADOR`. P8 registró en Firestore la transición `DISPENSANDO` → `CERRADO`, el reinicio a `0` y el ACK confirmado; P9 comprobó orden y persistencia después de reiniciar la app. P12 y P15 tienen cobertura automatizada, pero su inyección física de tramas aún queda pendiente. P14 y PL1–PL7 siguen pendientes de ejecución en Wokwi o con placas, según el caso. Una compilación no equivale a una prueba física.
 
 ## Problemática
 
@@ -48,7 +48,7 @@ Para pruebas de app sin placas, dos teléfonos sustituyen temporalmente los ESP3
 - **F3 — Monitoreo:** el Panel muestra conexión, 0–3 rasguños y estado del comedero.
 - **F4 — Solicitud y alerta:** tres rasguños dentro de una ventana fija de 5 segundos mantienen 3/3 pendiente y notifican una vez al Panel.
 - **F5 — Control manual y ACK:** Operador envía `DISPENSAR`; el actuador simula o ejecuta apertura de 1,5 s, cierra y confirma con ACK.
-- **F6 — Historial:** el Panel con rol `operador` guarda lecturas válidas en Firestore; los usuarios con perfil pueden consultar las últimas 50.
+- **F6 — Historial:** el Panel con rol `operador` guarda el estado inicial y cada cambio de lectura en Firestore; los latidos repetidos del mismo valor se omiten para no llenar el límite de 50 registros. Los usuarios con perfil pueden consultar las últimas 50 lecturas.
 - **F7 — Enlaces:** Android–Android cifrado con AES-GCM; Android Panel–ESP32 gateway disponible en modo de prueba T3 local.
 - **F8 — Estado seguro:** pérdida de enlace, timeout o reinicio cancela una entrega activa y pone el comedero en `CERRADO`.
 
@@ -102,12 +102,16 @@ La matriz de [`docs/SEGURIDAD_ISO_OT.md`](docs/SEGURIDAD_ISO_OT.md) enlaza cada 
 
 ## Pruebas
 
-Las 12 pruebas unitarias cubren lógica de ventana, validación de mensajes, AES-GCM, secuencias y autorización del rol en el Nodo. Android Lint no informa errores; sus avisos recomiendan actualizar el target SDK y algunas dependencias. Los resultados por caso y las capturas completas de teléfono están en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md). La prueba positiva de dispensación con Operador, el historial con lecturas persistidas y las pruebas físicas de placas aún están pendientes.
+Las 16 pruebas unitarias cubren lógica de ventana, validación de mensajes, AES-GCM, secuencias, autorización del rol en el Nodo y filtrado de lecturas repetidas, incluido el reintento cuando falla una escritura. Android Lint no informa errores; sus avisos recomiendan actualizar el target SDK y algunas dependencias. P8 y P9 se verificaron con ambos teléfonos; P1 confirma la sesión válida y el rol en el HONOR. Las capturas y el alcance preciso están en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md). Las pruebas de integración ESP32 siguen pendientes de ejecución en Wokwi o con placas físicas.
+
+### ESP32 con VS Code y Wokwi
+
+El repositorio incluye un proyecto independiente para cada ESP32 en `wokwi pruebas/cama/` y `wokwi pruebas/comedero/`, con `diagram.json`, `wokwi.toml` y plantillas `secrets.example.h`. La extensión Wokwi para VS Code puede ejecutar estos diagramas después de compilar el firmware; Wokwi simula ESP32 y Wi-Fi y permite conexiones salientes a servicios como MQTT. El simulador no equivale a conectar un teléfono físico a la red virtual: con el gateway público no se aceptan conexiones entrantes; la conexión a la red local requiere el gateway privado de Wokwi. Las pruebas de P14 y PL1–PL7 aún no se han ejecutado en el simulador ni en placas. Antes de hacer una simulación de red, deben configurarse credenciales nuevas en archivos locales `secrets.h`; nunca se debe enviar una credencial MQTT real al gateway público. Más detalles en [`docs/ANALISIS_WOKWI.md`](docs/ANALISIS_WOKWI.md) y [la guía oficial de Wi-Fi de Wokwi](https://docs.wokwi.com/guides/esp32-wifi).
 
 ## Limitaciones conocidas
 
 - Se deben usar credenciales nuevas de HiveMQ y una clave HMAC aleatoria en los `secrets.h` locales; las credenciales recibidas anteriormente no deben reutilizarse.
-- La cuenta Firebase debe tener perfil Firestore y el rol operador asignado manualmente para habilitar el control y guardar lecturas. En esta verificación los dos teléfonos usaron cuentas `OBSERVADOR`; por eso se probó el bloqueo seguro, pero el historial quedó vacío y no se completaron la entrega positiva ni la persistencia de lecturas.
+- La cuenta usada como Panel necesita el rol `operador`, asignado manualmente en Firestore, para dispensar y guardar lecturas. El perfil de prueba del HONOR tiene ese rol; la contraseña no se guarda en el proyecto.
 - El Nodo necesita acceso a Internet para verificar en Firestore el token y rol del Panel al iniciar una sesión Android–Android; si la verificación falla, no acepta órdenes. Los observadores pueden monitorear una vez autenticada la sesión.
 - El gateway App–ESP32 es una modalidad de prueba sin cifrado ni autenticación criptográfica; no usar en Internet/redes públicas.
 - MQTT en `PubSubClient` usa QoS 0; el sketch repite el ACK hasta que la Cama confirma con lectura 0, pero la entrega MQTT no sustituye una prueba de reconexión real.
