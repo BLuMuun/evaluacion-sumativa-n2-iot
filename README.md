@@ -2,7 +2,7 @@
 
 Aplicación Android y firmware ESP32 para monitorear rasguños de un gato y controlar un comedero IoT. La aplicación requiere Login; el Nodo Android simula el dispositivo y el Panel permite monitorear y dispensar. Para la demostración con hardware, el ESP32 del comedero funciona como gateway TCP del Panel y mantiene MQTT/TLS con el ESP32 de la cama.
 
-> **Estado de verificación:** la app Android compila, pasan 12 pruebas unitarias y `lintDebug` termina con 0 errores (2 avisos informativos). En HONOR y Moto G35 se aprobaron P5, P6, P7 y P13; P4 fue repetida y confirmó el bloqueo seguro para un `OBSERVADOR`. P10 se probó en la dirección Panel→Nodo; queda pendiente repetirla en la dirección Nodo→Panel porque ADB perdió el acceso al Moto durante la captura. P2 y P3 constan aprobadas en el registro previo. P1, P8, P9, P11, P12, P14–P15 y las pruebas PL1–PL7 con placas siguen pendientes. Una compilación no equivale a una prueba física.
+> **Estado de verificación:** la app compila y pasan 12 pruebas unitarias. Android Lint termina sin errores y reporta avisos de actualización de SDK/dependencias. P2 y P3 constan aprobadas en el registro anterior; en HONOR y Moto G35 están aprobadas P5, P6, P7, P10 y P11. P4 confirma el bloqueo seguro para un `OBSERVADOR`, y P13 verifica que la app sigue funcionando con notificaciones denegadas. P9 es parcial: la consulta a Firestore funciona, pero no hay lecturas guardadas porque las cuentas de prueba son `OBSERVADOR` y las reglas reservan la escritura a `operador`. P12 y parte de P15 tienen cobertura automatizada; sus pruebas físicas de repetición y envío directo siguen pendientes. P1, P8, P14–P15 y las pruebas PL1–PL7 con placas siguen pendientes. Una compilación no equivale a una prueba física.
 
 ## Problemática
 
@@ -48,7 +48,7 @@ Para pruebas de app sin placas, dos teléfonos sustituyen temporalmente los ESP3
 - **F3 — Monitoreo:** el Panel muestra conexión, 0–3 rasguños y estado del comedero.
 - **F4 — Solicitud y alerta:** tres rasguños dentro de una ventana fija de 5 segundos mantienen 3/3 pendiente y notifican una vez al Panel.
 - **F5 — Control manual y ACK:** Operador envía `DISPENSAR`; el actuador simula o ejecuta apertura de 1,5 s, cierra y confirma con ACK.
-- **F6 — Historial:** el Panel guarda lecturas válidas en Firestore y consulta las últimas 50.
+- **F6 — Historial:** el Panel con rol `operador` guarda lecturas válidas en Firestore; los usuarios con perfil pueden consultar las últimas 50.
 - **F7 — Enlaces:** Android–Android cifrado con AES-GCM; Android Panel–ESP32 gateway disponible en modo de prueba T3 local.
 - **F8 — Estado seguro:** pérdida de enlace, timeout o reinicio cancela una entrega activa y pone el comedero en `CERRADO`.
 
@@ -102,12 +102,12 @@ La matriz de [`docs/SEGURIDAD_ISO_OT.md`](docs/SEGURIDAD_ISO_OT.md) enlaza cada 
 
 ## Pruebas
 
-Los 12 tests unitarios cubren lógica de ventana, validación de mensajes, AES-GCM, secuencias y autorización del rol en el Nodo. Android Lint no informa errores; conserva dos avisos por `targetSdk = 36` y la versión fijada de `core-ktx`. Los resultados por caso y las capturas completas de teléfono están en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md). La prueba positiva de dispensación con Operador y las pruebas físicas de placas aún están pendientes.
+Las 12 pruebas unitarias cubren lógica de ventana, validación de mensajes, AES-GCM, secuencias y autorización del rol en el Nodo. Android Lint no informa errores; sus avisos recomiendan actualizar el target SDK y algunas dependencias. Los resultados por caso y las capturas completas de teléfono están en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md). La prueba positiva de dispensación con Operador, el historial con lecturas persistidas y las pruebas físicas de placas aún están pendientes.
 
 ## Limitaciones conocidas
 
 - Se deben usar credenciales nuevas de HiveMQ y una clave HMAC aleatoria en los `secrets.h` locales; las credenciales recibidas anteriormente no deben reutilizarse.
-- La cuenta Firebase debe tener perfil Firestore y el rol operador asignado manualmente para habilitar el control. En esta verificación los dos teléfonos usaron cuentas `OBSERVADOR`; por eso se probó el bloqueo seguro y no la entrega positiva como Operador.
+- La cuenta Firebase debe tener perfil Firestore y el rol operador asignado manualmente para habilitar el control y guardar lecturas. En esta verificación los dos teléfonos usaron cuentas `OBSERVADOR`; por eso se probó el bloqueo seguro, pero el historial quedó vacío y no se completaron la entrega positiva ni la persistencia de lecturas.
 - El Nodo necesita acceso a Internet para verificar en Firestore el token y rol del Panel al iniciar una sesión Android–Android; si la verificación falla, no acepta órdenes. Los observadores pueden monitorear una vez autenticada la sesión.
 - El gateway App–ESP32 es una modalidad de prueba sin cifrado ni autenticación criptográfica; no usar en Internet/redes públicas.
 - MQTT en `PubSubClient` usa QoS 0; el sketch repite el ACK hasta que la Cama confirma con lectura 0, pero la entrega MQTT no sustituye una prueba de reconexión real.
