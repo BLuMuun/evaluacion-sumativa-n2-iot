@@ -2,7 +2,7 @@
 
 Aplicación Android y firmware ESP32 para monitorear rasguños de un gato y controlar un comedero IoT. La aplicación requiere Login; el Nodo Android simula el dispositivo y el Panel permite monitorear y dispensar. Para la demostración con hardware, el ESP32 del comedero funciona como gateway TCP del Panel y mantiene MQTT/TLS con el ESP32 de la cama.
 
-> **Estado de verificación:** el build Android más reciente compila, pasan 16 pruebas unitarias y Android Lint termina sin errores. P1, P2, P3, P5, P6, P7, P8, P9, P10, P11 y P13 están aprobadas en los teléfonos, con sus alcances y evidencias en la matriz. P4 confirma el bloqueo seguro para un `OBSERVADOR`. P8 registró en Firestore la transición `DISPENSANDO` → `CERRADO`, el reinicio a `0` y el ACK confirmado; P9 comprobó orden y persistencia después de reiniciar la app. P12 y P15 tienen cobertura automatizada, pero su inyección física de tramas aún queda pendiente. P14 y PL1–PL7 siguen pendientes de ejecución en Wokwi o con placas, según el caso. Una compilación no equivale a una prueba física.
+> **Estado de verificación (23-10-2026):** el build Android compila, pasan 16 pruebas unitarias y Android Lint termina sin errores. P1–P11, P13 y P14 están aprobadas dentro del alcance documentado; P12/P15 tienen cobertura automatizada, pero no inyección directa de tramas en hardware. PL1–PL8 fueron validadas en la integración Android + Wokwi. No se usaron placas ESP32 físicas: los resultados del gateway y los actuadores corresponden a simulación y no se presentan como prueba de hardware.
 
 ## Problemática
 
@@ -70,12 +70,13 @@ LECTURA;comedero;DISPENSANDO
 CMD;comida;DISPENSAR
 ACK;comida;DISPENSADA
 ACK;comida;CANCELADA
+ACK;lectura;secuenciaCama
 ACK;enlace;LATIDO
 ```
 
 Mensajes con campo, tipo, clave o valor inválido se descartan. Entre teléfonos, el Nodo negocia una sal aleatoria de 16 bytes y ambos derivan una clave AES-256 con PBKDF2-HMAC-SHA256. Cada trama incluye secuencia creciente autenticada por GCM, IV aleatorio y ciphertext Base64; tramas alteradas, con secuencia repetida o con otro código no se procesan.
 
-En MQTT de los ESP32, los mensajes firmados usan el sobre `R2|secuencia|idSolicitud|TIPO;CLAVE;VALOR|HMAC-SHA-256`. El Comedero verifica HMAC y secuencia antes de pasar una lectura o ACK. La Cama conserva el ID y el estado 3/3 hasta `DISPENSADA` o `CANCELADA`.
+En MQTT de los ESP32, los mensajes firmados usan el sobre `R2|secuencia|idSolicitud|TIPO;CLAVE;VALOR|HMAC-SHA-256`. El Comedero verifica HMAC y secuencia antes de pasar una lectura o ACK. Cada `LECTURA` recibe un `ACK;lectura;secuenciaCama` firmado; la Cama conserva la lectura en cola y reenvía la misma secuencia cada 750 ms hasta que el gateway la confirma. El Comedero vuelve a confirmar duplicados válidos sin volver a aplicar su estado. La Cama conserva el ID y el estado 3/3 hasta `DISPENSADA` o `CANCELADA`.
 
 En el modo de laboratorio App–ESP32 se usa `nonce;secuencia;TIPO;CLAVE;VALOR`. Ese canal TCP **no está cifrado ni tiene HMAC**; el nonce y la secuencia solo acotan cada sesión y ayudan a rechazar repetición exacta. Debe limitarse a una red controlada. No se presenta como canal seguro de producción.
 
@@ -85,10 +86,9 @@ En el modo de laboratorio App–ESP32 se usa `nonce;secuencia;TIPO;CLAVE;VALOR`.
 - [Análisis de los proyectos Wokwi recibidos](docs/ANALISIS_WOKWI.md)
 - [Plan MVP por hitos](PLAN_MVP.md)
 - [Configuración de Firebase](docs/FIREBASE_SETUP.md)
-- [Pruebas P1–P15 y PL1–PL7](docs/PRUEBAS_SUMATIVA.md)
+- [Integración Android + Wokwi](docs/INTEGRACION_ANDROID_WOKWI.md)
+- [Resultados y evidencias P1–P15 y PL1–PL8](docs/PRUEBAS_SUMATIVA.md)
 - [Instalación y ejecución](docs/INSTALACION.md)
-- [Diseño y mockup de las pantallas](docs/DISENO_SUMATIVA_PARA_REVISION.md)
-- [Análisis de los sketches y diagramas Wokwi](docs/ANALISIS_WOKWI.md)
 
 ## Firebase
 
@@ -102,11 +102,11 @@ La matriz de [`docs/SEGURIDAD_ISO_OT.md`](docs/SEGURIDAD_ISO_OT.md) enlaza cada 
 
 ## Pruebas
 
-Las 16 pruebas unitarias cubren lógica de ventana, validación de mensajes, AES-GCM, secuencias, autorización del rol en el Nodo y filtrado de lecturas repetidas, incluido el reintento cuando falla una escritura. Android Lint no informa errores; sus avisos recomiendan actualizar el target SDK y algunas dependencias. P8 y P9 se verificaron con ambos teléfonos; P1 confirma la sesión válida y el rol en el HONOR. Las capturas y el alcance preciso están en [`docs/PRUEBAS_SUMATIVA.md`](docs/PRUEBAS_SUMATIVA.md). Las pruebas de integración ESP32 siguen pendientes de ejecución en Wokwi o con placas físicas.
+Las 16 pruebas unitarias cubren lógica de ventana, validación de mensajes, AES-GCM, secuencias, autorización del rol en el Nodo y filtrado de lecturas repetidas, incluido el reintento cuando falla una escritura. Android Lint no informa errores; sus avisos recomiendan actualizar el target SDK y algunas dependencias. La matriz y la página de [integración Android + Wokwi](docs/INTEGRACION_ANDROID_WOKWI.md) reúnen los resultados, el alcance y las evidencias. La integración fue ejecutada con el Moto G35 como Panel y los dos ESP32 simulados; P10 sigue parcial y las pruebas con placas físicas no se realizaron.
 
 ### ESP32 con VS Code y Wokwi
 
-El repositorio incluye un proyecto independiente para cada ESP32 en `wokwi pruebas/cama/` y `wokwi pruebas/comedero/`, con `diagram.json`, `wokwi.toml` y plantillas `secrets.example.h`. La extensión Wokwi para VS Code puede ejecutar estos diagramas después de compilar el firmware; Wokwi simula ESP32 y Wi-Fi y permite conexiones salientes a servicios como MQTT. El simulador no equivale a conectar un teléfono físico a la red virtual: con el gateway público no se aceptan conexiones entrantes; la conexión a la red local requiere el gateway privado de Wokwi. Las pruebas de P14 y PL1–PL7 aún no se han ejecutado en el simulador ni en placas. Antes de hacer una simulación de red, deben configurarse credenciales nuevas en archivos locales `secrets.h`; nunca se debe enviar una credencial MQTT real al gateway público. Más detalles en [`docs/ANALISIS_WOKWI.md`](docs/ANALISIS_WOKWI.md) y [la guía oficial de Wi-Fi de Wokwi](https://docs.wokwi.com/guides/esp32-wifi).
+El repositorio incluye un proyecto independiente para cada ESP32 en `wokwi pruebas/cama/` y `wokwi pruebas/comedero/`, con `diagram.json`, `wokwi.toml` y plantillas `secrets.example.h`. La extensión Wokwi para VS Code ejecuta estos diagramas y permite conexiones salientes a servicios como MQTT. La integración del Moto G35 con el gateway simulado requiere el Private Wokwi IoT Gateway, reenvío local TCP/5050 y `adb reverse`; el gateway público no acepta conexiones entrantes. PL1–PL8 se ejecutaron en simulación. Antes de repetir la prueba, configura credenciales nuevas en archivos locales `secrets.h`; nunca publiques credenciales MQTT reales. Los resultados y las limitaciones están en [Integración Android + Wokwi](docs/INTEGRACION_ANDROID_WOKWI.md), la [matriz de pruebas](docs/PRUEBAS_SUMATIVA.md) y el [análisis Wokwi](docs/ANALISIS_WOKWI.md). Consulta también [la guía oficial de Wi-Fi de Wokwi](https://docs.wokwi.com/guides/esp32-wifi).
 
 ## Limitaciones conocidas
 

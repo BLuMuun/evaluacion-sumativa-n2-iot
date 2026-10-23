@@ -1,0 +1,37 @@
+2026-10-23T16:51:01-03:00 | Endpoint de prueba escuchando solo en localhost:5051; esperando Panel.
+2026-10-23T16:51:41-03:00 | Panel conectado desde 127.0.0.1:58638.
+2026-10-23T16:51:41-03:00 | Saludo y estado inicial enviados: 0/3, CERRADO.
+2026-10-23T16:51:43-03:00 | Primer latido respondido; desde aquí el gateway permanece TCP abierto y silencioso.
+2026-10-23T16:51:45-03:00 | Latido #2 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:51:47-03:00 | Latido #3 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:51:49-03:00 | Latido #4 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:51:51-03:00 | Latido #5 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:51:53-03:00 | Latido #6 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:51:55-03:00 | Latido #7 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:51:57-03:00 | Latido #8 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:51:59-03:00 | Latido #9 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:01-03:00 | Latido #10 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:03-03:00 | Latido #11 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:05-03:00 | Latido #12 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:07-03:00 | Latido #13 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:09-03:00 | Latido #14 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:11-03:00 | Latido #15 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:13-03:00 | Latido #16 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:15-03:00 | Latido #17 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:17-03:00 | Latido #18 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:19-03:00 | Latido #19 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:21-03:00 | Latido #20 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:23-03:00 | Latido #21 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:25-03:00 | Latido #22 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:27-03:00 | Latido #23 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:29-03:00 | Latido #24 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:31-03:00 | Latido #25 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:33-03:00 | Latido #26 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:35-03:00 | Latido #27 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:37-03:00 | Latido #28 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:39-03:00 | Latido #29 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:41-03:00 | Latido #30 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:43-03:00 | Latido #31 recibido; ACK suprimido deliberadamente.
+2026-10-23T16:52:43-03:00 | Panel cerró TCP tras 60.1 s sin respuesta válida del gateway.
+2026-10-23T16:52:43-03:00 | Latidos recibidos=31; respuestas omitidas=30.
+2026-10-23T16:52:43-03:00 | RESULTADO: APROBADA; timeout del Panel dentro de la ventana de 58–70 s.

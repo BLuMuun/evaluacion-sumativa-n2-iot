@@ -14,7 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Notificaciones locales; si el permiso se deniega, el resto de la aplicación sigue funcionando. */
 object Notificaciones {
     private const val CANAL = "comedero_alertas"
-    private val siguienteId = AtomicInteger(1)
+    private const val ID_SOLICITUD = 1
+    private val siguienteId = AtomicInteger(2)
 
     fun crearCanal(contexto: Context) {
         val canal = NotificationChannel(
@@ -26,6 +27,8 @@ object Notificaciones {
         }
         contexto.getSystemService(NotificationManager::class.java)
             .createNotificationChannel(canal)
+        // Elimina avisos que hayan quedado activos de versiones anteriores de la app.
+        NotificationManagerCompat.from(contexto).cancelAll()
     }
 
     fun permisoHabilitado(contexto: Context): Boolean {
@@ -43,6 +46,23 @@ object Notificaciones {
     }
 
     fun mostrar(contexto: Context, titulo: String, texto: String) {
+        mostrarConId(contexto, siguienteId.getAndIncrement(), titulo, texto)
+    }
+
+    fun mostrarSolicitud(contexto: Context, titulo: String, texto: String) {
+        mostrarConId(contexto, ID_SOLICITUD, titulo, texto)
+    }
+
+    fun cancelarSolicitud(contexto: Context?) {
+        if (contexto == null) return
+        try {
+            NotificationManagerCompat.from(contexto).cancel(ID_SOLICITUD)
+        } catch (_: SecurityException) {
+            // La cancelación también debe ser segura si Android revoca el permiso en paralelo.
+        }
+    }
+
+    private fun mostrarConId(contexto: Context, id: Int, titulo: String, texto: String) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(
                 contexto,
@@ -61,7 +81,7 @@ object Notificaciones {
         try {
             val gestor = NotificationManagerCompat.from(contexto)
             if (gestor.areNotificationsEnabled()) {
-                gestor.notify(siguienteId.getAndIncrement(), notificacion)
+                gestor.notify(id, notificacion)
             }
         } catch (_: SecurityException) {
             // Si el permiso cambia justo antes de publicar, se descarta el aviso sin cerrar la app.

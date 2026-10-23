@@ -1,0 +1,8 @@
+Validación del reinicio local del contador tras lectura parcial
+Fecha: 2026-10-23 (hora local de Santiago)
+Dispositivo: Moto G35, app Comedero IoT existente, sesión OPERADOR.
+Gateway: ESP32 Comedero de Wokwi, conexión TCP/5050 por ADB reverse.
+Procedimiento: Panel conectado en 0/3 y CERRADO; se pulsó una vez el botón de Cama. La UI mostró 1/3 y CERRADO. Tras esperar más de la ventana configurada de 5 s, la UI permaneció conectada y volvió a 0/3, CERRADO.
+Resultado: PASÓ para la corrección de vencimiento local del contador parcial. No se envió una orden de dispensación.
+Evidencia adjunta: PL7-Reset-Ventana-5s-MotoG35-20261023.png (captura final 0/3, CERRADO).
+Nota de alcance: el terminal serie de Wokwi no fue capturado por el monitor de PC en esta sesión; la observación confirmada fue el estado visible del Panel Android después del vencimiento.

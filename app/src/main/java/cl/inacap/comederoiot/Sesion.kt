@@ -47,7 +47,7 @@ object Sesion {
     private const val VENTANA_MS = 5_000L
     private const val ENTREGA_MS = 1_500L
     private const val LATIDO_MS = 2_000L
-    private const val TIEMPO_SIN_LATIDO_MS = 6_000L
+    private const val TIEMPO_SIN_LATIDO_MS = 60_000L
     private val alcance = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _estado = MutableStateFlow(EstadoSesion())
     // Se asigna exclusivamente contexto.applicationContext en preparar().
@@ -220,6 +220,7 @@ object Sesion {
                 }
 
                 if (estadoAnterior == EstadoEnlace.CONECTADO && nuevoEstado != EstadoEnlace.CONECTADO) {
+                    Notificaciones.cancelarSolicitud(contexto)
                     volverAEstadoSeguro()
                     _estado.value = _estado.value.copy(
                         aviso = "Enlace perdido. Comedero cerrado y solicitud reiniciada."
@@ -283,7 +284,7 @@ object Sesion {
                 delay(500)
                 if (SystemClock.elapsedRealtime() - ultimoMensajeValidoMs >= TIEMPO_SIN_LATIDO_MS) {
                     _estado.value = _estado.value.copy(
-                        aviso = "No se recibieron mensajes válidos por 6 segundos. Cerrando enlace por seguridad."
+                        aviso = "No se recibieron mensajes válidos por 60 segundos. Cerrando enlace por seguridad."
                     )
                     actual.cerrarConexionActual()
                     break
@@ -328,6 +329,7 @@ object Sesion {
                 ventana.vencer(SystemClock.elapsedRealtime())
             ) {
                 _estado.value = _estado.value.copy(rasgunos = 0)
+                Notificaciones.cancelarSolicitud(contexto)
                 enviar(Mensaje("LECTURA", "rasgunos", "0"))
             }
         }
@@ -398,9 +400,10 @@ object Sesion {
                     val cantidad = mensaje.valor.toIntOrNull() ?: return
                     val anterior = _estado.value.rasgunos
                     _estado.value = _estado.value.copy(rasgunos = cantidad)
+                    if (cantidad < 3) Notificaciones.cancelarSolicitud(contexto)
                     if (anterior < 3 && cantidad == 3) {
                         contexto?.let {
-                            Notificaciones.mostrar(
+                            Notificaciones.mostrarSolicitud(
                                 it,
                                 "Solicitud de alimento",
                                 "El gato está solicitando comida"
@@ -423,6 +426,9 @@ object Sesion {
                     ultimaEntrega = "cancelada por seguridad",
                     aviso = "La entrega se canceló y el comedero quedó cerrado."
                 )
+            }
+            if (mensaje.valor == "DISPENSADA" || mensaje.valor == "CANCELADA") {
+                Notificaciones.cancelarSolicitud(contexto)
             }
         }
     }
@@ -472,6 +478,7 @@ object Sesion {
     }
 
     private fun volverAEstadoSeguro() {
+        Notificaciones.cancelarSolicitud(contexto)
         trabajoEntrega?.cancel()
         trabajoEntrega = null
         trabajoVentana?.cancel()

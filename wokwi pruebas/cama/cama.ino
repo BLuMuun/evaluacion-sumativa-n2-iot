@@ -3,6 +3,7 @@
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include <mbedtls/md.h>
+#include <string.h>
 #include <time.h>
 #include "secrets.h"
 
@@ -55,9 +56,11 @@ const int PIN_LED = 2;
 const int RASGUNOS_NECESARIOS = 3;
 const unsigned long VENTANA_FIJA_MS = 5000;
 const unsigned long REINTENTO_SOLICITUD_MS = 2000;
+const unsigned long REINTENTO_LECTURA_MQTT_MS = 750;
 const unsigned long REINTENTO_WIFI_MS = 8000;
 const unsigned long REINTENTO_MQTT_MS = 4000;
 const unsigned long DEBOUNCE_MS = 150;
+const unsigned long COOLDOWN_DISPENSACION_MS = 10000;
 const int CAPACIDAD_COLA = 8;
 
 WiFiClientSecure secureClient;
@@ -67,6 +70,9 @@ Preferences preferences;
 struct LecturaEnCola {
   uint64_t requestId;
   uint8_t cantidad;
+  uint64_t secuencia;
+  unsigned long ultimoIntento;
+  uint8_t intentos;
 };
 
 LecturaEnCola colaLecturas[CAPACIDAD_COLA];
@@ -81,10 +87,18 @@ unsigned long inicioVentana = 0;
 unsigned long ultimoReintentoSolicitud = 0;
 unsigned long ultimoIntentoWiFi = 0;
 unsigned long ultimoIntentoMQTT = 0;
+unsigned long ultimaNotificacionMQTT = 0;
+int ultimoEstadoMQTTReportado = 999;
 unsigned long ultimaPulsacion = 0;
+unsigned long inicioCooldown = 0;
 bool solicitudPendiente = false;
 bool botonAnterior = HIGH;
 bool horaLista = false;
+bool cooldownActivo = false;
+
+bool enCooldownDispensacion() {
+  return cooldownActivo && millis() - inicioCooldown < COOLDOWN_DISPENSACION_MS;
+}
 
 bool generarHMAC(const char* texto, char* salida, size_t largoSalida) {
   unsigned char bytes[32];
@@ -123,41 +137,49 @@ void encolarLectura(uint8_t cantidad) {
     cantidadCola--;
   }
   int final = (cabezaCola + cantidadCola) % CAPACIDAD_COLA;
-  colaLecturas[final] = {requestIdActual, cantidad};
+  colaLecturas[final] = {requestIdActual, cantidad, 0, 0, 0};
   cantidadCola++;
 }
 
-bool publicarLectura(uint64_t id, uint8_t cantidad) {
+bool publicarLectura(LecturaEnCola& lectura) {
   if (!mqttClient.connected()) return false;
-  uint64_t secuencia = secuenciaSalida + 1;
-  if (secuencia == 0) return false;
+  if (lectura.secuencia == 0) {
+    lectura.secuencia = secuenciaSalida + 1;
+    if (lectura.secuencia == 0) return false;
+    secuenciaSalida = lectura.secuencia;
+    preferences.putULong64("txSeq", secuenciaSalida);
+  }
 
   char firmado[128];
   snprintf(firmado, sizeof(firmado), "R2|%llu|%llu|LECTURA;rasgunos;%u",
-      static_cast<unsigned long long>(secuencia),
-      static_cast<unsigned long long>(id),
-      static_cast<unsigned int>(cantidad));
+      static_cast<unsigned long long>(lectura.secuencia),
+      static_cast<unsigned long long>(lectura.requestId),
+      static_cast<unsigned int>(lectura.cantidad));
   char firma[65];
   if (!generarHMAC(firmado, firma, sizeof(firma))) return false;
 
   String payload = String(firmado) + "|" + firma;
-  secuenciaSalida = secuencia;
-  preferences.putULong64("txSeq", secuenciaSalida);
+  bool reintento = lectura.intentos > 0;
+  lectura.ultimoIntento = millis();
+  if (lectura.intentos < UINT8_MAX) lectura.intentos++;
   bool enviado = mqttClient.publish(MQTT_TOPIC, payload.c_str());
   if (enviado) {
-    Serial.print("MQTT > ");
-    Serial.println(String("LECTURA;rasgunos;") + cantidad);
+    Serial.printf("[MQTT/TLS] Lectura %s: secuencia %llu, valor %u/3; esperando acuse del gateway.\n",
+        reintento ? "reenviada" : "publicada",
+        static_cast<unsigned long long>(lectura.secuencia),
+        static_cast<unsigned int>(lectura.cantidad));
+  } else {
+    Serial.printf("[MQTT/TLS] Publicación pendiente: secuencia %llu; se conservará para reintentar.\n",
+        static_cast<unsigned long long>(lectura.secuencia));
   }
   return enviado;
 }
 
 void despacharCola() {
   if (cantidadCola == 0 || !mqttClient.connected()) return;
-  LecturaEnCola lectura = colaLecturas[cabezaCola];
-  if (publicarLectura(lectura.requestId, lectura.cantidad)) {
-    cabezaCola = (cabezaCola + 1) % CAPACIDAD_COLA;
-    cantidadCola--;
-  }
+  LecturaEnCola& lectura = colaLecturas[cabezaCola];
+  if (lectura.intentos > 0 && millis() - lectura.ultimoIntento < REINTENTO_LECTURA_MQTT_MS) return;
+  publicarLectura(lectura);
 }
 
 void procesarAcuseMQTT(char* topic, byte* payload, unsigned int largo) {
@@ -180,7 +202,13 @@ void procesarAcuseMQTT(char* topic, byte* payload, unsigned int largo) {
       !leerU64(linea.substring(b + 1, c), id) || secuencia <= ultimaSecuenciaAck) return;
 
   String mensaje = linea.substring(c + 1, d);
-  if (mensaje != "ACK;comida;DISPENSADA" && mensaje != "ACK;comida;CANCELADA") return;
+  bool esAcuseLectura = mensaje.startsWith("ACK;lectura;");
+  uint64_t secuenciaLeida = 0;
+  if (esAcuseLectura) {
+    if (!leerU64(mensaje.substring(String("ACK;lectura;").length()), secuenciaLeida)) return;
+  } else if (mensaje != "ACK;comida;DISPENSADA" && mensaje != "ACK;comida;CANCELADA") {
+    return;
+  }
   String firmado = linea.substring(0, d);
   char firmaEsperada[65];
   if (!generarHMAC(firmado.c_str(), firmaEsperada, sizeof(firmaEsperada))) return;
@@ -189,6 +217,25 @@ void procesarAcuseMQTT(char* topic, byte* payload, unsigned int largo) {
     Serial.println("ACK MQTT rechazado: firma inválida.");
     return;
   }
+
+  if (esAcuseLectura) {
+    if (cantidadCola == 0) return;
+    LecturaEnCola& lectura = colaLecturas[cabezaCola];
+    if (id != lectura.requestId || secuenciaLeida != lectura.secuencia) {
+      Serial.println("Acuse MQTT ignorado: no coincide con la lectura pendiente.");
+      return;
+    }
+
+    ultimaSecuenciaAck = secuencia;
+    preferences.putULong64("ackSeq", ultimaSecuenciaAck);
+    Serial.printf("[MQTT/TLS] Gateway confirmó la lectura %u/3 (secuencia %llu).\n",
+        static_cast<unsigned int>(lectura.cantidad),
+        static_cast<unsigned long long>(lectura.secuencia));
+    cabezaCola = (cabezaCola + 1) % CAPACIDAD_COLA;
+    cantidadCola--;
+    return;
+  }
+
   if (!solicitudPendiente || id != requestIdActual) {
     Serial.println("ACK MQTT ignorado: no corresponde a la solicitud activa.");
     return;
@@ -199,8 +246,15 @@ void procesarAcuseMQTT(char* topic, byte* payload, unsigned int largo) {
   solicitudPendiente = false;
   contadorRasgunos = 0;
   inicioVentana = 0;
+  cabezaCola = 0;
+  cantidadCola = 0;
   preferences.putBool("pendiente", false);
   digitalWrite(PIN_LED, LOW);
+  if (mensaje == "ACK;comida;DISPENSADA") {
+    inicioCooldown = millis();
+    cooldownActivo = true;
+    Serial.println("[Cooldown] Cama bloqueada por hasta 10 s después de dispensar.");
+  }
   encolarLectura(0);
   Serial.println(mensaje == "ACK;comida;DISPENSADA"
       ? "Entrega confirmada; ventana reiniciada."
@@ -208,17 +262,84 @@ void procesarAcuseMQTT(char* topic, byte* payload, unsigned int largo) {
 }
 
 void conectarWiFiSiCorresponde() {
-  if (WiFi.status() == WL_CONNECTED) return;
+  static bool enlaceWiFiMostrado = false;
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!enlaceWiFiMostrado) {
+      Serial.printf("[Wi-Fi] Conectado. IP: %s\n", WiFi.localIP().toString().c_str());
+      enlaceWiFiMostrado = true;
+    }
+    return;
+  }
+  if (enlaceWiFiMostrado) {
+    Serial.println("[Wi-Fi] Enlace perdido; intentando reconectar.");
+    enlaceWiFiMostrado = false;
+  }
   if (mqttClient.connected()) mqttClient.disconnect();
 
   unsigned long ahora = millis();
   if (ahora - ultimoIntentoWiFi < REINTENTO_WIFI_MS) return;
   ultimoIntentoWiFi = ahora;
-  Serial.println("Wi-Fi desconectado; intentando reconectar.");
+  Serial.println("[Wi-Fi] Sin conexión; se reintentará automáticamente.");
   WiFi.reconnect();
 }
 
+const char* descripcionEstadoMQTT(int estado) {
+  switch (estado) {
+    case -4: return "se agotó el tiempo de conexión";
+    case -3: return "se perdió la conexión con el broker";
+    case -2: return "no se pudo abrir la conexión de red";
+    case -1: return "el cliente está desconectado";
+    case 1: return "el broker rechazó la versión del protocolo";
+    case 2: return "el identificador del dispositivo fue rechazado";
+    case 3: return "el broker no está disponible";
+    case 4: return "el broker rechazó usuario o contraseña";
+    case 5: return "el broker no autorizó el acceso de este usuario";
+    default: return "respuesta desconocida del broker";
+  }
+}
+
+bool valorConfiguracionPendiente(const char* valor) {
+  if (valor == nullptr || valor[0] == '\0') return true;
+  return strstr(valor, "YOUR_") != nullptr ||
+         strstr(valor, "GENERATE_") != nullptr ||
+         strstr(valor, "CHANGE_ME") != nullptr;
+}
+
+bool configuracionMQTTLista() {
+  return !valorConfiguracionPendiente(MQTT_HOST) &&
+         !valorConfiguracionPendiente(MQTT_USERNAME) &&
+         !valorConfiguracionPendiente(MQTT_PASSWORD) &&
+         !valorConfiguracionPendiente(HMAC_SECRET) &&
+         strlen(HMAC_SECRET) >= 32;
+}
+
+void informarFalloMQTT() {
+  const int estado = mqttClient.state();
+  const unsigned long ahora = millis();
+  if (estado == ultimoEstadoMQTTReportado && ahora - ultimaNotificacionMQTT < 30000) return;
+
+  ultimoEstadoMQTTReportado = estado;
+  ultimaNotificacionMQTT = ahora;
+  Serial.println();
+  Serial.printf("[MQTT] Nodo Cama: %s (código %d).\n", descripcionEstadoMQTT(estado), estado);
+  if (estado == 4 || estado == 5) {
+    Serial.println("[MQTT] Revisa la cuenta y sus permisos en HiveMQ; las credenciales no se muestran.");
+  } else {
+    Serial.println("[MQTT] Nuevo intento automático en 4 segundos.");
+  }
+}
+
 bool conectarMQTT() {
+  static bool avisoConfiguracionMostrado = false;
+  if (!configuracionMQTTLista()) {
+    if (!avisoConfiguracionMostrado) {
+      Serial.println();
+      Serial.println("[Configuración] HiveMQ todavía no está configurado.");
+      Serial.println("[Configuración] Completa usuario y contraseña nuevos en secrets.h local y reinicia la simulación.");
+      avisoConfiguracionMostrado = true;
+    }
+    return false;
+  }
   if (mqttClient.connected() || WiFi.status() != WL_CONNECTED || !horaLista) return mqttClient.connected();
   unsigned long ahora = millis();
   if (ahora - ultimoIntentoMQTT < REINTENTO_MQTT_MS) return false;
@@ -226,7 +347,10 @@ bool conectarMQTT() {
 
   String idCliente = "ESP32_CAMA_" + String((uint32_t)ESP.getEfuseMac(), HEX);
   if (!mqttClient.connect(idCliente.c_str(), MQTT_USERNAME, MQTT_PASSWORD)) {
-    Serial.printf("Conexión MQTT pendiente (estado %d).\n", mqttClient.state());
+    // PubSubClient 2.8 no cierra el transporte cuando falla la apertura TCP/TLS.
+    // Libera el socket para que el siguiente intento empiece con una conexión limpia.
+    secureClient.stop();
+    informarFalloMQTT();
     return false;
   }
   if (!mqttClient.subscribe(MQTT_ACK_TOPIC)) {
@@ -234,12 +358,20 @@ bool conectarMQTT() {
     Serial.println("No se pudo suscribir al tópico de ACK.");
     return false;
   }
-  Serial.println("MQTT TLS conectado; escuchando confirmaciones.");
+  ultimoEstadoMQTTReportado = 999;
+  Serial.println();
+  Serial.println("[MQTT/TLS] Conectado a HiveMQ; esperando confirmaciones del comedero.");
   return true;
 }
 
 void iniciarRasgunos() {
   unsigned long ahora = millis();
+  if (enCooldownDispensacion()) {
+    unsigned long restante = COOLDOWN_DISPENSACION_MS - (ahora - inicioCooldown);
+    Serial.printf("[Cooldown] Espera %lu s antes de iniciar otra solicitud.\n",
+        (restante + 999) / 1000);
+    return;
+  }
   if (solicitudPendiente) return;
 
   if (contadorRasgunos > 0 && ahora - inicioVentana >= VENTANA_FIJA_MS) {
@@ -258,14 +390,18 @@ void iniciarRasgunos() {
   contadorRasgunos++;
   if (contadorRasgunos > RASGUNOS_NECESARIOS) return;
 
-  Serial.printf("Rasguños: %u/3\n", contadorRasgunos);
+  Serial.printf("[Sensor] Rasguño detectado: %u/3\n", contadorRasgunos);
   encolarLectura(contadorRasgunos);
   if (contadorRasgunos == RASGUNOS_NECESARIOS) {
     solicitudPendiente = true;
     preferences.putBool("pendiente", true);
     digitalWrite(PIN_LED, HIGH);
     ultimoReintentoSolicitud = ahora;
-    Serial.println("Solicitud pendiente; esperando confirmación del comedero.");
+    Serial.println();
+    Serial.println("========================================");
+    Serial.println("SOLICITUD CONFIRMADA: 3/3 EN 5 s");
+    Serial.println("Pendiente: el Panel debe decidir si dispensa.");
+    Serial.println("========================================");
   }
 }
 
@@ -292,7 +428,7 @@ void configurarHoraTLS() {
   if (getLocalTime(&hora, 50)) {
     horaLista = true;
     secureClient.setCACert(ROOT_CA);
-    Serial.println("Hora lista para validar el certificado TLS de HiveMQ.");
+    Serial.println("[TLS] Hora sincronizada; certificado de HiveMQ listo.");
   }
 }
 
@@ -317,7 +453,14 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD, 6);
   ultimoIntentoWiFi = millis();
-  Serial.println("ESP32 Cama listo: tres rasguños en una ventana fija de 5 s.");
+  Serial.println();
+  Serial.println("========================================");
+  Serial.println("COMEDERO IoT | SUMATIVA - NODO CAMA");
+  Serial.println("Sensor: 3 rasguños en ventana fija de 5 s");
+  Serial.println("Red: Wi-Fi · MQTT/TLS: puerto 8883");
+  Serial.println("Estado: esperando conexión de red");
+  Serial.println("========================================");
+  Serial.println("[Wi-Fi] Conectando a la red de simulación...");
 }
 
 void loop() {

@@ -3,6 +3,7 @@
 .gradle-user-home/
 .android-user-home/
 **/build/
+**/.tmp-arduino-*/
 **/arduino-cli.exe
 local.properties
 .idea/

@@ -1,0 +1,16 @@
+Verificación del ciclo de notificaciones — 2026-10-23
+
+- Se corrigió la notificación de solicitud para usar un identificador estable y evitar duplicados.
+- Se cancela el aviso de solicitud cuando la entrega queda dispensada o cancelada, cuando la solicitud vuelve a cero, al vencer la ventana y al perder el enlace.
+- Al crear el canal, la app elimina avisos antiguos pendientes de versiones anteriores.
+- `testDebugUnitTest --offline --no-daemon`: 16 tests, 0 fallas y 0 errores; `BUILD SUCCESSFUL`.
+- `assembleDebug --offline --no-daemon`: `BUILD SUCCESSFUL`.
+- `lintDebug --offline --no-daemon`: `BUILD SUCCESSFUL`.
+- Se instaló la actualización en el Moto G35 con `adb install -r`; se conservaron los datos locales y el perfil OPERADOR.
+- El Panel reconectó al gateway y mostró `CONECTADO`, `0/3`, `CERRADO`.
+- Tras una nueva secuencia de tres rasguños, el Panel mostró `3/3`, `CERRADO` y habilitó la dispensación. La lista activa de Android mostró un único `NotificationRecord` de Comedero IoT, id 1, con “Solicitud de alimento” y “El gato está solicitando comida”.
+- Después de pulsar “Dispensar comida”, el Moto volvió a `0/3`, `CERRADO` y `Última entrega confirmada`.
+- La sección de notificaciones activas de Android ya no contenía ningún registro de Comedero IoT después del ACK.
+- No se encontraron excepciones fatales ni ANR recientes en los últimos registros inspeccionados.
+
+Capturas completas: pantalla inicial restaurada (`PL4-App-actualizada`), solicitud 3/3 (`PL7-Notificacion-3de3-AppActualizada`) y estado confirmado tras el ACK (`PL4-ACK-Notif-limpiada`).

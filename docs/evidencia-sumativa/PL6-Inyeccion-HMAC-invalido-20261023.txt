@@ -1,0 +1,12 @@
+Prueba PL6 - inyección negativa MQTT/TLS
+Fecha: 2026-10-23
+
+Se abrió una conexión TLS al broker configurado en el archivo local ignorado
+`wokwi pruebas/comedero/secrets.h`; el broker respondió CONNACK 0. Se publicó
+una sola trama QoS 0, no retenida, con el formato de lectura R2 y un HMAC
+deliberadamente incorrecto. La trama no contenía un comando de dispensación.
+
+La terminal del gateway mostró `Lectura MQTT rechazada: HMAC inválido.`. En la
+captura el servo permanece en posición CERRADO y el gateway vuelve a esperar
+solicitudes de la cama. La firma inválida no alteró estado ni accionó el
+actuador. No se registraron credenciales en este archivo.

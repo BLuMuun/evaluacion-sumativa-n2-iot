@@ -1,0 +1,20 @@
+Verificación local del gateway Wokwi — 2026-10-23
+
+Alcance: conexión TCP de laboratorio desde el PC a localhost:5050, reenviado al ESP32 Comedero mediante Wokwi Private Gateway. La app Android no estaba conectada durante esta prueba.
+
+- El gateway respondió HELLO con un nonce de sesión de 24 caracteres. Se omite su valor.
+- El estado inicial fue LECTURA;rasgunos;0 y LECTURA;comedero;CERRADO.
+- Un ACK;enlace;LATIDO con secuencia 1 recibió ACK del gateway en 229 ms.
+- Se repitió exactamente la secuencia 1; no se recibió una segunda respuesta durante 1,2 s. No se enviaron comandos CMD ni se accionó el servo.
+- Una conexión nueva sin latidos comenzó con 0 rasguños y CERRADO. El gateway cerró el socket a los 179 s reales. No había solicitud pendiente; por eso esta prueba confirma el timeout del lado gateway, pero no la cancelación/ACK MQTT de una solicitud ni el timeout del Panel Android.
+- HELLO y las dos lecturas iniciales tardaron 3557 ms desde una conexión nueva. Esta medición incluye el establecimiento TCP y la latencia del túnel Wokwi; supera 2 s, pero no mide la latencia de una lectura MQTT en una sesión Android ya establecida. Este sondeo preliminar antecede a la medición PL7 cronometrada, cuyo resultado final se registra en [`PRUEBAS_SUMATIVA.md`](../PRUEBAS_SUMATIVA.md).
+
+Resultado: handshake TCP y protección de secuencia repetida confirmados a nivel gateway; timeout silencioso de 60 s de simulación confirmado a nivel gateway. No se marca como completada la integración Android ni la prueba de DISPENSAR repetido.
+
+Revalidación de sesión Android — 2026-10-23
+
+- El Moto G35 (rol OPERADOR) se conectó al gateway usando 127.0.0.1 con ADB reverse. La pantalla mostró CONECTADO, 0/3 y CERRADO; la captura completa está en PL3-Panel-MotoG35-conectado-20261023.png.
+- Durante 60 segundos se muestreó el socket local cada 10 segundos: siete observaciones indicaron una conexión ESTABLISHED y la conexión seguía estable al final.
+- El HONOR permaneció en la pantalla de selección de modo; no formó parte de esta sesión. No se envió DISPENSAR ni se accionó el actuador.
+
+Resultado de esta repetición: PL3 aprobado para la conexión Moto–gateway/Wokwi y su estabilidad de un minuto. No valida la sesión Android–Android ni una orden de dispensación.

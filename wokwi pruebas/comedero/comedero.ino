@@ -7,6 +7,7 @@
 #include <mbedtls/md.h>
 #include <mbedtls/base64.h>
 #include <time.h>
+#include <string.h>
 #include "secrets.h"
 
 const char* WIFI_SSID = WIFI_SSID_VALUE;
@@ -58,7 +59,9 @@ const int PIN_LED = 2;
 const int SERVO_CERRADO = 0;
 const int SERVO_ABIERTO = 90;
 const unsigned long TIEMPO_ABIERTO_MS = 1500;
-const unsigned long TIEMPO_MAX_SIN_PANEL_MS = 6000;
+const unsigned long COOLDOWN_DISPENSACION_MS = 10000;
+const unsigned long TIEMPO_MAX_SIN_PANEL_MS = 60000;
+const unsigned long VENTANA_RASGUNOS_MS = 5000;
 const unsigned long INTERVALO_TELEMETRIA_MS = 2000;
 const unsigned long INTERVALO_ACK_MQTT_MS = 2000;
 const unsigned long REINTENTO_WIFI_MS = 8000;
@@ -84,6 +87,8 @@ bool solicitudPendiente = false;
 bool dispensando = false;
 bool panelSessionActiva = false;
 bool horaLista = false;
+bool cooldownActivo = false;
+unsigned long inicioCooldown = 0;
 String noncePanel;
 String ackPendiente;
 uint64_t idAckPendiente = 0;
@@ -93,7 +98,11 @@ unsigned long ultimaTelemetria = 0;
 unsigned long ultimoAckMQTT = 0;
 unsigned long ultimoIntentoWiFi = 0;
 unsigned long ultimoIntentoMQTT = 0;
+unsigned long ultimaNotificacionMQTT = 0;
+int ultimoEstadoMQTTReportado = 999;
 unsigned long proximaLecturaTCP = 0;
+unsigned long inicioVentanaRasgunos = 0;
+bool ventanaRasgunosActiva = false;
 char bufferTCP[MAX_LINEA_TCP + 1];
 size_t largoTCP = 0;
 bool lineaTCPExcedida = false;
@@ -139,6 +148,10 @@ String estadoComedero() {
   return dispensando ? "DISPENSANDO" : "CERRADO";
 }
 
+bool enCooldownDispensacion() {
+  return cooldownActivo && millis() - inicioCooldown < COOLDOWN_DISPENSACION_MS;
+}
+
 bool enviarTCP(const String& mensaje) {
   if (!panelSessionActiva || !clientePanel.connected() || noncePanel.isEmpty()) return false;
   uint64_t siguiente = secuenciaPanelSalida + 1;
@@ -153,6 +166,19 @@ bool enviarTCP(const String& mensaje) {
 
 void publicarEstadoRasgunosTCP() {
   enviarTCP(String("LECTURA;rasgunos;") + rasgunosActuales);
+}
+
+void revisarVencimientoRasgunos() {
+  if (!ventanaRasgunosActiva || rasgunosActuales == 0 || rasgunosActuales >= 3 ||
+      solicitudPendiente || dispensando) return;
+  if (millis() - inicioVentanaRasgunos < VENTANA_RASGUNOS_MS) return;
+
+  // Respaldo local: el Panel vuelve a 0/3 aunque el MQTT de reinicio de la Cama se pierda.
+  rasgunosActuales = 0;
+  ventanaRasgunosActiva = false;
+  preferences.putUInt("rasgunos", 0);
+  if (panelSessionActiva) publicarEstadoRasgunosTCP();
+  Serial.println("[Timeout] Ventana de rasguños vencida en gateway; estado restablecido a 0/3.");
 }
 
 void publicarEstadoComederoTCP() {
@@ -180,6 +206,30 @@ bool publicarAckMQTT() {
   if (enviado) {
     ultimoAckMQTT = millis();
     Serial.printf("Acuse MQTT pendiente de confirmación de cama: %s\n", ackPendiente.c_str());
+  }
+  return enviado;
+}
+
+bool publicarAcuseLecturaMQTT(uint64_t requestId, uint64_t secuenciaLectura) {
+  if (!mqttClient.connected()) return false;
+  uint64_t siguiente = secuenciaAckMQTT + 1;
+  if (siguiente == 0) return false;
+
+  String firmado = "R2|" + aTextoU64(siguiente) + "|" + aTextoU64(requestId) +
+      "|ACK;lectura;" + aTextoU64(secuenciaLectura);
+  char firma[65];
+  if (!generarHMAC(firmado.c_str(), firma, sizeof(firma))) return false;
+  String payload = firmado + "|" + firma;
+
+  secuenciaAckMQTT = siguiente;
+  preferences.putULong64("ackSeq", secuenciaAckMQTT);
+  bool enviado = mqttClient.publish(MQTT_ACK_TOPIC, payload.c_str());
+  if (enviado) {
+    Serial.printf("[MQTT/TLS] Acuse enviado para lectura de Cama, secuencia %llu.\n",
+        static_cast<unsigned long long>(secuenciaLectura));
+  } else {
+    Serial.printf("[MQTT/TLS] No se pudo enviar el acuse de lectura %llu; Cama reintentará.\n",
+        static_cast<unsigned long long>(secuenciaLectura));
   }
   return enviado;
 }
@@ -253,9 +303,8 @@ void procesarLecturaMQTT(const String& linea) {
   uint64_t secuencia = 0;
   uint64_t requestId = 0;
   if (!leerU64(linea.substring(a + 1, b), secuencia) ||
-      !leerU64(linea.substring(b + 1, c), requestId) ||
-      secuencia <= ultimaSecuenciaCama) {
-    Serial.println("Lectura MQTT repetida, antigua o mal formada; descartada.");
+      !leerU64(linea.substring(b + 1, c), requestId)) {
+    Serial.println("Lectura MQTT mal formada; descartada.");
     return;
   }
 
@@ -274,17 +323,39 @@ void procesarLecturaMQTT(const String& linea) {
     return;
   }
 
+  if (secuencia <= ultimaSecuenciaCama) {
+    Serial.printf("[MQTT/TLS] Lectura duplicada recibida; reenviando acuse de secuencia %llu.\n",
+        static_cast<unsigned long long>(secuencia));
+    publicarAcuseLecturaMQTT(requestId, secuencia);
+    return;
+  }
+
   ultimaSecuenciaCama = secuencia;
   preferences.putULong64("camaSeq", ultimaSecuenciaCama);
+  uint8_t lecturaAnterior = rasgunosActuales;
   rasgunosActuales = static_cast<uint8_t>(valor.toInt());
   preferences.putUInt("rasgunos", rasgunosActuales);
+
+  if (rasgunosActuales == 0 || rasgunosActuales >= 3) {
+    ventanaRasgunosActiva = false;
+  } else if (lecturaAnterior == 0 || !ventanaRasgunosActiva) {
+    inicioVentanaRasgunos = millis();
+    ventanaRasgunosActiva = true;
+  }
+  Serial.printf("[MQTT/TLS] Lectura de Cama aceptada: %u/3.\n",
+      static_cast<unsigned int>(rasgunosActuales));
 
   if (rasgunosActuales == 3 && requestId > ultimoIdFinalizado && !dispensando) {
     idSolicitudActiva = requestId;
     solicitudPendiente = true;
     preferences.putULong64("activaId", idSolicitudActiva);
     preferences.putBool("pendiente", true);
-    Serial.printf("Solicitud pendiente ID %s; se espera el comando del Panel.\n", aTextoU64(requestId).c_str());
+    Serial.println();
+    Serial.println("========================================");
+    Serial.println("SOLICITUD DE ALIMENTO RECIBIDA");
+    Serial.printf("ID de solicitud: %s\n", aTextoU64(requestId).c_str());
+    Serial.println("Estado: pendiente de autorización del Panel.");
+    Serial.println("========================================");
   } else if (rasgunosActuales < 3 && requestId == idSolicitudActiva && !dispensando) {
     solicitudPendiente = false;
     preferences.putBool("pendiente", false);
@@ -292,6 +363,7 @@ void procesarLecturaMQTT(const String& linea) {
 
   if (rasgunosActuales == 0) limpiarAckTrasConfirmacionCama(requestId);
   if (panelSessionActiva) publicarEstadoRasgunosTCP();
+  publicarAcuseLecturaMQTT(requestId, secuencia);
 }
 
 void callbackMQTT(char* topic, byte* payload, unsigned int largo) {
@@ -315,12 +387,24 @@ void configurarHoraTLS() {
   if (getLocalTime(&hora, 50)) {
     horaLista = true;
     secureClient.setCACert(ROOT_CA);
-    Serial.println("Hora lista para TLS de HiveMQ.");
+    Serial.println("[TLS] Hora sincronizada; certificado de HiveMQ listo.");
   }
 }
 
 void conectarWiFiSiCorresponde() {
-  if (WiFi.status() == WL_CONNECTED) return;
+  static bool enlaceWiFiMostrado = false;
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!enlaceWiFiMostrado) {
+      Serial.printf("[Wi-Fi] Conectado. IP del gateway: %s\n", WiFi.localIP().toString().c_str());
+      enlaceWiFiMostrado = true;
+      Serial.println("[Gateway] TCP/5050 disponible para el Panel.");
+    }
+    return;
+  }
+  if (enlaceWiFiMostrado) {
+    Serial.println("[Wi-Fi] Enlace perdido; el comedero queda en estado seguro.");
+    enlaceWiFiMostrado = false;
+  }
   if (mqttClient.connected()) mqttClient.disconnect();
   if (panelSessionActiva) {
     cancelarSolicitudPorSeguridad("se perdió Wi-Fi", false);
@@ -337,7 +421,63 @@ void conectarWiFiSiCorresponde() {
   WiFi.reconnect();
 }
 
+const char* descripcionEstadoMQTT(int estado) {
+  switch (estado) {
+    case -4: return "se agotó el tiempo de conexión";
+    case -3: return "se perdió la conexión con el broker";
+    case -2: return "no se pudo abrir la conexión de red";
+    case -1: return "el cliente está desconectado";
+    case 1: return "el broker rechazó la versión del protocolo";
+    case 2: return "el identificador del dispositivo fue rechazado";
+    case 3: return "el broker no está disponible";
+    case 4: return "el broker rechazó usuario o contraseña";
+    case 5: return "el broker no autorizó el acceso de este usuario";
+    default: return "respuesta desconocida del broker";
+  }
+}
+
+bool valorConfiguracionPendiente(const char* valor) {
+  if (valor == nullptr || valor[0] == '\0') return true;
+  return strstr(valor, "YOUR_") != nullptr ||
+         strstr(valor, "GENERATE_") != nullptr ||
+         strstr(valor, "CHANGE_ME") != nullptr;
+}
+
+bool configuracionMQTTLista() {
+  return !valorConfiguracionPendiente(MQTT_HOST) &&
+         !valorConfiguracionPendiente(MQTT_USERNAME) &&
+         !valorConfiguracionPendiente(MQTT_PASSWORD) &&
+         !valorConfiguracionPendiente(HMAC_SECRET) &&
+         strlen(HMAC_SECRET) >= 32;
+}
+
+void informarFalloMQTT() {
+  const int estado = mqttClient.state();
+  const unsigned long ahora = millis();
+  if (estado == ultimoEstadoMQTTReportado && ahora - ultimaNotificacionMQTT < 30000) return;
+
+  ultimoEstadoMQTTReportado = estado;
+  ultimaNotificacionMQTT = ahora;
+  Serial.println();
+  Serial.printf("[MQTT] Nodo Comedero: %s (código %d).\n", descripcionEstadoMQTT(estado), estado);
+  if (estado == 4 || estado == 5) {
+    Serial.println("[MQTT] Revisa la cuenta y sus permisos en HiveMQ; las credenciales no se muestran.");
+  } else {
+    Serial.println("[MQTT] Nuevo intento automático en 4 segundos.");
+  }
+}
+
 bool conectarMQTT() {
+  static bool avisoConfiguracionMostrado = false;
+  if (!configuracionMQTTLista()) {
+    if (!avisoConfiguracionMostrado) {
+      Serial.println();
+      Serial.println("[Configuración] HiveMQ todavía no está configurado.");
+      Serial.println("[Configuración] Completa usuario y contraseña nuevos en secrets.h local y reinicia la simulación.");
+      avisoConfiguracionMostrado = true;
+    }
+    return false;
+  }
   if (mqttClient.connected() || WiFi.status() != WL_CONNECTED || !horaLista) return mqttClient.connected();
   unsigned long ahora = millis();
   if (ahora - ultimoIntentoMQTT < REINTENTO_MQTT_MS) return false;
@@ -345,7 +485,10 @@ bool conectarMQTT() {
 
   String idCliente = "ESP32_COMEDERO_" + String((uint32_t)ESP.getEfuseMac(), HEX);
   if (!mqttClient.connect(idCliente.c_str(), MQTT_USERNAME, MQTT_PASSWORD)) {
-    Serial.printf("Conexión MQTT pendiente (estado %d).\n", mqttClient.state());
+    // PubSubClient 2.8 no cierra el transporte cuando falla la apertura TCP/TLS.
+    // Libera el socket para que el siguiente intento empiece con una conexión limpia.
+    secureClient.stop();
+    informarFalloMQTT();
     return false;
   }
   if (!mqttClient.subscribe(MQTT_TOPIC)) {
@@ -353,7 +496,9 @@ bool conectarMQTT() {
     Serial.println("No se pudo suscribir al tópico de solicitudes.");
     return false;
   }
-  Serial.println("MQTT TLS conectado; escuchando solicitudes de la cama.");
+  ultimoEstadoMQTTReportado = 999;
+  Serial.println();
+  Serial.println("[MQTT/TLS] Conectado a HiveMQ; escuchando solicitudes de la cama.");
   return true;
 }
 
@@ -362,9 +507,24 @@ bool mensajePanelPermitido(const String& mensaje) {
 }
 
 void iniciarDispensacion() {
-  if (!solicitudPendiente || dispensando || estadoComedero() != "CERRADO" ||
-      !panelSessionActiva || !mqttClient.connected()) {
-    publicarAckTCP("CANCELADA");
+  if (!solicitudPendiente) {
+    Serial.println("[Actuador] Orden ignorada: no hay una solicitud pendiente.");
+    return;
+  }
+  if (dispensando) {
+    Serial.println("[Actuador] Orden repetida ignorada: ya hay una entrega en curso.");
+    return;
+  }
+  if (enCooldownDispensacion()) {
+    unsigned long restante = COOLDOWN_DISPENSACION_MS - (millis() - inicioCooldown);
+    Serial.printf("[Cooldown] Solicitud cancelada; espera %lu s antes de otra entrega.\n",
+        (restante + 999) / 1000);
+    finalizarSolicitud("CANCELADA", true);
+    return;
+  }
+  if (estadoComedero() != "CERRADO" || !panelSessionActiva || !mqttClient.connected()) {
+    Serial.println("[Actuador] Solicitud cancelada: falta un enlace activo o el actuador no está cerrado.");
+    finalizarSolicitud("CANCELADA", true);
     return;
   }
 
@@ -373,7 +533,8 @@ void iniciarDispensacion() {
   digitalWrite(PIN_LED, HIGH);
   servoComedero.write(SERVO_ABIERTO);
   publicarEstadoComederoTCP();
-  Serial.println("Panel autorizado: compuerta abierta por 1,5 s.");
+  Serial.println();
+  Serial.println("[Actuador] Orden del Panel aceptada; abriendo la compuerta por 1,5 s.");
 }
 
 void procesarMensajePanel(const String& trama) {
@@ -390,6 +551,8 @@ void procesarMensajePanel(const String& trama) {
 
   if (mensaje == "ACK;enlace;LATIDO") {
     ultimoHeartbeatPanel = millis();
+    // Confirma al Panel que el gateway sigue vivo; la app vigila tráfico en ambas direcciones.
+    enviarTCP("ACK;enlace;LATIDO");
     return;
   }
   if (mensaje == "CMD;comida;DISPENSAR") iniciarDispensacion();
@@ -475,13 +638,15 @@ void mantenerSesionPanel() {
     clientePanel.stop();
     panelSessionActiva = false;
     noncePanel = "";
-    Serial.println("Panel sin latido por 6 s; sesión TCP cerrada.");
+    Serial.println("Panel sin latido por 60 s; sesión TCP cerrada.");
   }
 }
 
 void revisarActuador() {
   if (!dispensando || millis() - inicioEntrega < TIEMPO_ABIERTO_MS) return;
   cerrarActuador();
+  inicioCooldown = millis();
+  cooldownActivo = true;
   // El servo ya está en posición cerrada; solo ahora se emite el ACK de éxito.
   solicitudPendiente = false;
   rasgunosActuales = 0;
@@ -496,7 +661,8 @@ void revisarActuador() {
   publicarAckTCP("DISPENSADA");
   publicarEstadoRasgunosTCP();
   publicarAckMQTT();
-  Serial.println("Compuerta cerrada; entrega confirmada.");
+  Serial.println("[Actuador] Compuerta cerrada; entrega confirmada.");
+  Serial.println("[Cooldown] Nueva entrega bloqueada por hasta 10 s.");
 }
 
 void aceptarLecturaCamaCero() {
@@ -537,7 +703,15 @@ void setup() {
   servidorTCP.begin();
   servidorTCP.setNoDelay(true);
   ultimoIntentoWiFi = millis();
-  Serial.println("ESP32 Comedero/Gateway listo. Servo siempre inicia en CERRADO.");
+  Serial.println();
+  Serial.println("========================================");
+  Serial.println("COMEDERO IoT | SUMATIVA - NODO COMEDERO");
+  Serial.println("Actuador iniciado en posición CERRADO");
+  Serial.println("Gateway TCP: puerto 5050");
+  Serial.println("Red: Wi-Fi · MQTT/TLS: puerto 8883");
+  Serial.println("Estado: esperando conexión de red");
+  Serial.println("========================================");
+  Serial.println("[Wi-Fi] Conectando a la red de simulación...");
 }
 
 void loop() {
@@ -552,6 +726,7 @@ void loop() {
   }
 
   revisarActuador();
+  revisarVencimientoRasgunos();
 
   unsigned long ahora = millis();
   if (panelSessionActiva && ahora - proximaLecturaTCP >= INTERVALO_TELEMETRIA_MS) {

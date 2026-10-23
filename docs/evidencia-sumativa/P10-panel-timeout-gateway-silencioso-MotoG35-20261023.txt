@@ -1,0 +1,20 @@
+Inicio de muestreo local: 2026-10-23T16:52:09.3600449-03:00
+2,4s | CONECTADO | 0 / 3 | CERRADO
+7s | CONECTADO | 0 / 3 | CERRADO
+11,5s | CONECTADO | 0 / 3 | CERRADO
+16,3s | CONECTADO | 0 / 3 | CERRADO
+20,8s | CONECTADO | 0 / 3 | CERRADO
+25,3s | CONECTADO | 0 / 3 | CERRADO
+29,8s | CONECTADO | 0 / 3 | CERRADO
+34,2s | CONECTADO | 0 / 3 | CERRADO
+38,7s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+Captura tras desconexión a los 38,7s de muestreo: C:\Users\Warlo\Documents\ChatGPT\Avance Comedero\sumativa-repo\docs\evidencia-sumativa\P10-Panel-timeout-gateway-silencioso-despues-MotoG35-20261023.png
+43,7s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+48,2s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+52,7s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+57,1s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+65,9s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+70,4s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+74,8s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+79,5s | DESCONECTADO | 0 / 3 | CERRADO | Enlace perdido. Comedero cerrado y solicitud reiniciada.
+Fin de muestreo: 2026-10-23T16:53:30.9877499-03:00

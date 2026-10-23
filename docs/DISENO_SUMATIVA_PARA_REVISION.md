@@ -91,7 +91,7 @@ Para `OBSERVADOR`, las lecturas y el historial se pueden consultar, pero `Dispen
 └─────────────────────────────┘
 ```
 
-## Flujo de comunicación que se propone validar
+## Flujo de comunicación implementado y probado
 
 ```text
 Modo demostración móvil:
@@ -103,7 +103,7 @@ ESP32 Cama  ← Wi-Fi/MQTT TLS + HMAC →  ESP32 Comedero/Gateway
                                           Teléfono Panel
 ```
 
-En la prueba con hardware, el Panel puede decidir la dispensación y el gateway envía la confirmación después de cerrar el servo. Para preservar el estado pendiente definido en este proyecto, la cama también recibe el ACK por MQTT. Ambos sketches se adaptaron y las ACL requeridas están descritas en `docs/ANALISIS_WOKWI.md`; las pruebas con las placas físicas siguen pendientes.
+En la integración Android + Wokwi, el Panel del Moto G35 se conectó por TCP/5050 al gateway virtual y tomó la decisión de dispensar. El gateway confirmó después de cerrar el servo; la cama recibió el ACK por MQTT y reinició la solicitud. También se validaron desconexión segura, rechazo HMAC, ventana y cooldown. La matriz completa y sus evidencias están en [`INTEGRACION_ANDROID_WOKWI.md`](INTEGRACION_ANDROID_WOKWI.md) y [`PRUEBAS_SUMATIVA.md`](PRUEBAS_SUMATIVA.md). Los ensayos con placas ESP32 físicas siguen pendientes.
 
 ## Decisiones revisadas con el docente
 
@@ -112,4 +112,4 @@ En la prueba con hardware, el Panel puede decidir la dispensación y el gateway 
 3. El enlace de prueba app–ESP32 es TCP local sin cifrar; Android–Android conserva AES-GCM. La limitación se documenta en README y matriz ISO/OT.
 4. Cloud Firestore usa perfiles/roles y lecturas; las cuentas nuevas son `observador`, y el administrador asigna `operador` desde Firebase Console.
 
-La aprobación docente fue comunicada por el estudiante y se usa como base de implementación. Las pruebas conectadas de Firebase, las pruebas en dos teléfonos y las pruebas físicas de hardware conservan su estado hasta contar con evidencia.
+La aprobación docente fue comunicada por el estudiante y se usa como base de implementación. Las pruebas de Firebase, las pruebas en dos teléfonos y la integración simulada conservan sus resultados y evidencias en la matriz; no se atribuyen resultados físicos a las simulaciones.

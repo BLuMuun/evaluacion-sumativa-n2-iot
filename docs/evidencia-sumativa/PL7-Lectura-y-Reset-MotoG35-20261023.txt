@@ -1,0 +1,10 @@
+PL7 — recepción de lecturas y reinicio del contador parcial
+Fecha: 2026-10-23 (hora de Santiago)
+Dispositivo: Moto G35, aplicación ya instalada, sesión OPERADOR.
+Transporte: MQTT/TLS → ESP32 Comedero/Gateway → TCP/5050 reenviado por ADB.
+
+Resultado funcional: el monitor TLS recibió `LECTURA;rasgunos;2` a las 18:08:56.381 -03:00. Una consulta posterior de la interfaz confirmó `CONECTADO`, `2/3` y `CERRADO`. Después de esperar 8 segundos, la interfaz confirmó `0/3` y `CERRADO`. No se pulsó Dispensar ni se accionó el servo. También se validó antes una lectura parcial `1/3` que venció a `0/3`.
+
+Límite de medición: el monitor visual no detectó el cambio de pantalla dentro de los 5 segundos posteriores al mensaje MQTT; una consulta posterior sí mostró 2/3. Por ello, el flujo y el reinicio están comprobados, pero esta sesión no certifica la latencia estricta inferior a 2 segundos exigida por PL7. Mantener PL7 como PARCIAL hasta repetir una medición sincronizada que capture la transición dentro del umbral.
+
+Evidencia: `PL7-Lectura-2de3-Panel-MotoG35-20261023.png` (estado 2/3); `PL7-Reset-2de3-a-0de3-MotoG35-20261023.png` (estado final 0/3); `PL7-Reset-Ventana-5s-MotoG35-20261023.png` (validación previa 1/3 → 0/3).

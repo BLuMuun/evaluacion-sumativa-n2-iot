@@ -3,3 +3,9 @@ version = 1
 firmware = 'build/comedero.ino.elf'
 elf = 'build/comedero.ino.elf'
 rfc2217ServerPort = 4000
+
+# Reenvía el puerto TCP del gateway ESP32 a localhost para pruebas desde el PC.
+# Con `adb reverse tcp:5050 tcp:5050`, el Moto G35 puede usar 127.0.0.1.
+[[net.forward]]
+from = "localhost:5050"
+to = "target:5050"

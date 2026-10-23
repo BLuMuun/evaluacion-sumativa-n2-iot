@@ -1,0 +1,21 @@
+Registro de verificación — 2026-10-23
+
+Android
+- Comando: testDebugUnitTest --rerun-tasks --offline --no-daemon, lintDebug y assembleDebug.
+- Resultado: BUILD SUCCESSFUL; 54 tareas ejecutadas.
+- Pruebas unitarias: 16 en total, 0 fallas y 0 errores.
+- Lint: terminó correctamente; 6 avisos no bloqueantes relacionados con target API y versiones disponibles de Gradle/Firebase/AndroidX; 0 errores y 0 avisos fatales.
+- APK debug: generado correctamente.
+- HONOR RBN-NX3 y Moto G35: sin FATAL EXCEPTION ni ANR recientes en los registros del proceso de la app.
+- Estado observado durante la sesión: Moto G35 Panel OPERADOR conectado al gateway, 0/3, CERRADO; HONOR Nodo esperando conexión, 0/3, CERRADO. Al cierre, el socket TCP/5050 seguía establecido. El Moto pasó a pantalla del sistema y no se volvió a inspeccionar la UI de la app.
+
+Firmware ESP32
+- Ambos sketches compilaron para esp32:esp32:esp32.
+- Cama: 1.014.982 bytes de flash (77 %); 47.892 bytes de RAM global (14 %).
+- Comedero/Gateway: 1.041.089 bytes de flash (79 %); 48.548 bytes de RAM global (14 %).
+
+Alcance de esta sesión
+- No se envió una orden de dispensación ni se accionó el servo.
+- La conexión estable TCP/5050 por más de 60 s está registrada en PL3.
+- Siguen pendientes las pruebas integradas de cancelación segura durante una solicitud (PL5), replay válido/secuencia repetida en MQTT (PL6), medición de latencia (PL7), nueva solicitud después de que expire el cooldown (PL8), timeout por silencio de 60 s (P10) y la repetición física de P12/P15.
+- La ventana Wokwi de VS Code no pudo capturarse de forma fiable: `FrameArrived timed out` y `window capture timed out`. No se enviaron clics al simulador sin una observación actual.

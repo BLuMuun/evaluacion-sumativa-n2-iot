@@ -1,0 +1,8 @@
+PL7 — Repetición de prueba base de Unidad 1 y medición de latencia
+Fecha: 2026-10-23
+Entorno: Moto G35 (Android 15), app como Panel/OPERADOR; Cama y Comedero/Gateway ESP32 en Wokwi; HiveMQ MQTT/TLS. Sin placas físicas.
+Medición: el estudiante informó que inició Google Stopwatch justo antes de la segunda pulsación de Cama y lo detuvo al observar 2/3 en el Panel. Tiempo observado: 1,95 s, bajo el umbral estricto de 2 s. Es una medición manual reportada, no una captura instrumentada.
+Registro Wokwi de esa secuencia: Cama publicó 1/3 (secuencia 24) y el gateway confirmó; publicó 2/3 (secuencia 25) y el gateway confirmó; vencida la ventana fija, publicó 0/3 (secuencia 26) y recibió confirmación. Comedero aceptó las tres lecturas y envió sus ACK. No se dispensó.
+Estado final capturado por ADB: Moto conectado, 0/3, CERRADO.
+Limitación de evidencia: no se guardó una captura simultánea del cronómetro y del Panel en 2/3 durante esa medición. La imagen de Panel 2/3 conservada en el paquete corresponde a un reintento funcional separado y no se usa para certificar el tiempo cronometrado.
+Evidencias: PL7-MQTT-ACK-Cama-Comedero-20261023.png (registro de la secuencia); PL7-MotoG35-estado-final-20261023.png (Panel 0/3 y CERRADO); PL7-00-listo-20261023.png (estado inicial).
